@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'">
+<title>ESP32-S3 FC Configurator</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b0f14; --card:#131a22; --line:#243040; --fg:#e6edf3; --dim:#8b98a8; --cyan:#38bdf8; --red:#ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { width:min(460px, 92vw); background:var(--card); border:1px solid var(--line); border-radius:14px; padding:28px; }
+  h1 { margin:0 0 4px; font-size:20px; }
+  p { margin:0 0 18px; color:var(--dim); font-size:13px; }
+  label { display:block; font-size:12px; color:var(--dim); margin-bottom:6px; }
+  input { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:#0d131a; color:var(--fg); font:inherit; }
+  input:focus { outline:2px solid var(--cyan); outline-offset:-1px; }
+  .row { display:flex; gap:8px; margin:10px 0 18px; flex-wrap:wrap; }
+  .chip { border:1px solid var(--line); background:transparent; color:var(--dim); border-radius:999px; padding:4px 12px; font:inherit; font-size:12px; cursor:pointer; }
+  .chip:hover { color:var(--fg); border-color:var(--cyan); }
+  button.go { width:100%; padding:11px; border:0; border-radius:8px; background:var(--cyan); color:#04202e; font:inherit; font-weight:600; cursor:pointer; }
+  button.go:disabled { opacity:.6; cursor:default; }
+  #status { min-height:20px; margin-top:14px; font-size:13px; color:var(--dim); }
+  #status.err { color:var(--red); }
+</style>
+</head>
+<body>
+<main>
+  <h1>ESP32-S3 FC Configurator</h1>
+  <p>Join the flight controller's Wi-Fi (or your router, if it is in router mode), then connect.</p>
+  <form id="f">
+    <label for="host">Board address</label>
+    <input id="host" autocomplete="off" spellcheck="false" placeholder="192.168.4.1">
+    <div class="row">
+      <button type="button" class="chip" data-h="192.168.4.1">Hotspot 192.168.4.1</button>
+      <button type="button" class="chip" data-h="esp32fc.local">esp32fc.local</button>
+    </div>
+    <button class="go" id="go" type="submit">Connect</button>
+  </form>
+  <div id="status" role="status"></div>
+</main>
+<script src="connect.js"></script>
+</body>
+</html>
