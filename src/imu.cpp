@@ -1,7 +1,8 @@
 // imu.cpp - IMU hardware abstraction.
 //   Buses : I2C (Wire, any pins) or SPI (FSPI host, any pins via GPIO matrix), chosen at runtime from g_hw.
 //   Chips : InvenSense MPU-6050/6000/6500/9250/6886, ICM-20602/20608/20689/20948, ICM-42688-P/42605,
-//           Bosch BMI160/BMI088, ST LSM6DS3/DSL/DSO/DSR (+ISM330), QST QMI8658.
+//           Bosch BMI160/BMI088, ST LSM6DS3/DSL/DSO/DSR (+ISM330), QST QMI8658,
+//           CEVA/Hillcrest BNO080/BNO085/BNO086 (SH-2 sensor hub, I2C only, calibrated gyro + accel + mag).
 //   All sensors are configured for ~1 kHz+ output, gyro +-2000 dps and accel +-8 g (BMI088: +-12 g),
 //   then converted to g and deg/s in the chip frame and rotated to the FLU body frame with g_hw.align.
 #include "imu.h"
@@ -14,7 +15,7 @@ const char* const IMU_NAMES[IMU_TYPE_COUNT] = {
   "ICM-42688-P", "ICM-42605",
   "BMI160", "BMI088",
   "LSM6DS3", "LSM6DSL/DS3TR-C", "LSM6DSO", "LSM6DSR/ISM330",
-  "QMI8658"};
+  "QMI8658", "BNO080/085/086"};
 
 ImuInfo g_imuInfo;
 
@@ -230,6 +231,168 @@ static void setupAk8963() {
   s_akOk = true;
 }
 
+// ---- BNO08x sensor hub (CEVA SH-2 over SHTP, I2C) ----
+// The hub does its own sensor calibration and delivers calibrated gyro (rad/s), accel (m/s^2) and magnetic
+// field (uT) as periodic input reports; we poll them and feed the same Mahony AHRS as every other chip.
+// No INT/RST wiring is needed (soft reset + polling); the chip frame is the one printed on the breakout.
+#define BNO_ADDR0 0x4A                          // default (DI/SA0 low), 0x4B with SA0 high
+#define BNO_ADDR1 0x4B
+#ifndef BNO_GYRO_US
+#define BNO_GYRO_US 2500                        // calibrated gyro report interval (400 Hz; the hub clamps to what it supports)
+#endif
+#ifndef BNO_ACC_US
+#define BNO_ACC_US 10000                        // accelerometer 100 Hz (only the attitude correction needs it)
+#endif
+#ifndef BNO_MAG_US
+#define BNO_MAG_US 20000                        // magnetometer 50 Hz, same as the AK8963 path
+#endif
+#define BNO_STALE_US 20000                      // no gyro report for 20 ms -> imuRead() fails (flight task disarms after 5 fails)
+#define BNO_CHUNK    60                         // data bytes per I2C read transaction (+4 header bytes)
+#define SHTP_CH_EXEC    1
+#define SHTP_CH_CONTROL 2
+#define SHTP_CH_REPORTS 3
+#define SH2_REPORT_ACC  0x01
+#define SH2_REPORT_GYRO 0x02
+#define SH2_REPORT_MAG  0x03
+
+static uint8_t  s_bnoAddr = 0, s_bnoSeq[6];     // TX sequence number per SHTP channel
+static uint8_t  s_bnoBuf[96];                   // payload of the packet just received (header stripped)
+static uint16_t s_bnoLen = 0;
+static uint8_t  s_bnoChan = 0;
+static float    s_bnoAcc[3], s_bnoGyr[3];       // newest samples, chip frame, g and deg/s
+static float    s_bnoMag[3];                    // newest magnetometer sample, chip frame, uT
+static bool     s_bnoMagNew = false, s_bnoHaveAcc = false, s_bnoHaveGyro = false, s_bnoReset = false;
+static uint8_t  s_bnoMagAcc = 0;                // hub's magnetometer accuracy 0 (unreliable) .. 3 (high)
+static uint32_t s_bnoGyroUs = 0, s_bnoRetryUs = 0;
+
+static bool bnoSend(uint8_t chan, const uint8_t* data, uint8_t n) {
+  const uint16_t total = n + 4;
+  Wire.beginTransmission(s_bnoAddr);
+  Wire.write((uint8_t)(total & 0xFF)); Wire.write((uint8_t)(total >> 8));
+  Wire.write(chan); Wire.write(s_bnoSeq[chan]++);
+  Wire.write(data, n);
+  return Wire.endTransmission() == 0;
+}
+
+// Reads one SHTP packet into s_bnoBuf. A header read tells the packet length (0 = nothing waiting), then the
+// payload is read in chunks, each preceded by a repeated 4-byte header that is discarded.
+static bool bnoRecv() {
+  if (Wire.requestFrom(s_bnoAddr, (uint8_t)4) != 4) return false;
+  uint8_t h[4];
+  for (int i = 0; i < 4; i++) h[i] = Wire.read();
+  const uint16_t total = (uint16_t)(h[0] | (h[1] << 8)) & 0x7FFF;      // bit 15 = continuation flag
+  if (total <= 4 || total > 512) return false;                          // empty, or a floating/garbage bus
+  uint16_t remain = total - 4, got = 0;
+  while (remain) {
+    const uint8_t n = remain > BNO_CHUNK ? BNO_CHUNK : (uint8_t)remain;
+    if (Wire.requestFrom(s_bnoAddr, (uint8_t)(n + 4)) != (size_t)(n + 4)) return false;
+    for (int i = 0; i < 4; i++) Wire.read();
+    for (uint8_t i = 0; i < n; i++) { const uint8_t b = Wire.read(); if (got < sizeof s_bnoBuf) s_bnoBuf[got++] = b; }
+    remain -= n;
+  }
+  s_bnoLen = got; s_bnoChan = h[2];
+  return true;
+}
+
+static void bnoSetFeature(uint8_t id, uint32_t us) {                    // SH-2 "Set Feature Command" (0xFD)
+  const uint8_t p[17] = {0xFD, id, 0, 0, 0, (uint8_t)us, (uint8_t)(us >> 8), (uint8_t)(us >> 16), (uint8_t)(us >> 24),
+                         0, 0, 0, 0, 0, 0, 0, 0};
+  bnoSend(SHTP_CH_CONTROL, p, sizeof p);
+}
+static void bnoEnableReports() {
+  bnoSetFeature(SH2_REPORT_GYRO, BNO_GYRO_US);
+  bnoSetFeature(SH2_REPORT_ACC,  BNO_ACC_US);
+  bnoSetFeature(SH2_REPORT_MAG,  BNO_MAG_US);
+}
+
+// Walks the sensor reports of one channel-3 packet. Layout: [0xFB base timestamp (5 B)] then reports of
+// ID, seq, status (bits 1:0 = accuracy), delay, x, y, z (int16 LE) = 10 bytes for accel / gyro / mag.
+static void bnoParseReports() {
+  uint16_t i = 0;
+  while (i < s_bnoLen) {
+    const uint8_t id = s_bnoBuf[i];
+    uint8_t len;
+    switch (id) {
+      case 0xFB: case 0xFA: len = 5; break;                             // base timestamp / timestamp rebase
+      case 0x01: case 0x02: case 0x03: case 0x04: case 0x06: len = 10; break;
+      case 0x05: len = 14; break;                                       // rotation vector
+      case 0x08: len = 12; break;                                       // game rotation vector
+      default: return;                                                  // unknown report: stop, don't guess its length
+    }
+    if (i + len > s_bnoLen) return;
+    const uint8_t* r = s_bnoBuf + i;
+    if (id >= SH2_REPORT_ACC && id <= SH2_REPORT_MAG) {
+      const float v[3] = {(float)(int16_t)(r[4] | (r[5] << 8)), (float)(int16_t)(r[6] | (r[7] << 8)), (float)(int16_t)(r[8] | (r[9] << 8))};
+      if (id == SH2_REPORT_ACC) {                                       // Q8, m/s^2 -> g
+        for (int k = 0; k < 3; k++) s_bnoAcc[k] = v[k] * (1.0f / (256.0f * 9.80665f));
+        s_bnoHaveAcc = true;
+      } else if (id == SH2_REPORT_GYRO) {                               // Q9, rad/s -> deg/s
+        for (int k = 0; k < 3; k++) s_bnoGyr[k] = v[k] * (57.29577951f / 512.0f);
+        s_bnoHaveGyro = true; s_bnoGyroUs = micros();
+      } else {                                                          // Q4, uT
+        for (int k = 0; k < 3; k++) s_bnoMag[k] = v[k] * (1.0f / 16.0f);
+        s_bnoMagAcc = r[2] & 3; s_bnoMagNew = true;
+      }
+    }
+    i += len;
+  }
+}
+
+static void bnoPump(uint8_t maxPackets) {
+  for (uint8_t k = 0; k < maxPackets && bnoRecv(); k++) {
+    if (s_bnoChan == SHTP_CH_REPORTS) bnoParseReports();
+    else if (s_bnoChan == SHTP_CH_EXEC && s_bnoLen >= 1 && s_bnoBuf[0] == 1) s_bnoReset = true;   // hub restarted -> reports are off
+  }
+}
+
+static bool bnoRead(float acc[3], float gyr[3]) {
+  bnoPump(3);
+  const uint32_t now = micros();
+  if (s_bnoReset) { s_bnoReset = false; bnoEnableReports(); }
+  if (now - s_bnoGyroUs > BNO_STALE_US) {                               // stalled: poke the hub every 0.5 s in case it restarted
+    if (now - s_bnoRetryUs > 500000) { s_bnoRetryUs = now; bnoEnableReports(); }
+    return false;
+  }
+  for (int i = 0; i < 3; i++) { acc[i] = s_bnoAcc[i]; gyr[i] = s_bnoGyr[i]; }   // between reports the last value is held
+  return true;
+}
+
+// Probe one address: soft reset, confirm with the SH-2 product-ID request, enable the reports, wait for data.
+static bool tryBno(uint8_t addr) {
+  s_bnoAddr = addr; memset(s_bnoSeq, 0, sizeof s_bnoSeq);
+  s_bnoHaveAcc = s_bnoHaveGyro = s_bnoMagNew = s_bnoReset = false; s_bnoMagAcc = 0;
+  Wire.beginTransmission(addr);
+  if (Wire.endTransmission() != 0) return false;                        // nothing there
+
+  const uint8_t rst = 1; bnoSend(SHTP_CH_EXEC, &rst, 1);                // soft reset
+  delay(150);
+  for (int k = 0; k < 12 && bnoRecv(); k++) {}                          // flush advertisement + reset-complete
+  delay(100);
+
+  const uint8_t req[2] = {0xF9, 0};                                     // product ID request
+  bnoSend(SHTP_CH_CONTROL, req, 2);
+  bool id = false;
+  for (int k = 0; k < 60 && !id; k++) {                                 // up to ~600 ms
+    delay(10);
+    for (int n = 0; n < 4 && bnoRecv(); n++)
+      if (s_bnoChan == SHTP_CH_CONTROL && s_bnoLen >= 8 && s_bnoBuf[0] == 0xF8) {
+        const uint32_t part = s_bnoBuf[4] | (s_bnoBuf[5] << 8) | (s_bnoBuf[6] << 16) | ((uint32_t)s_bnoBuf[7] << 24);
+        Serial.printf("IMU: BNO08x at 0x%02X, SH-2 part %lu, sw %u.%u\n", addr, (unsigned long)part, s_bnoBuf[2], s_bnoBuf[3]);
+        id = true;
+      }
+  }
+  if (!id) { Serial.printf("IMU: 0x%02X answers but is not a BNO08x sensor hub\n", addr); return false; }
+
+  bnoEnableReports();
+  const uint32_t t0 = millis();
+  while (millis() - t0 < 600 && !(s_bnoHaveGyro && s_bnoHaveAcc)) { bnoPump(4); delay(2); }
+  if (!(s_bnoHaveGyro && s_bnoHaveAcc)) { Serial.println("IMU: BNO08x found but no gyro/accel reports arrived"); return false; }
+  s_bnoReset = false; s_bnoGyroUs = micros(); s_bnoRetryUs = micros();
+  g_imuInfo.type = IMU_BNO085; g_imuInfo.bus = BUS_I2C; g_imuInfo.addr = addr; g_imuInfo.whoami = 0;   // the hub has no WHO_AM_I
+  s_type = IMU_BNO085;
+  return true;
+}
+
 static bool configure(uint8_t t) {
   switch (t) {
     case IMU_MPU6050: case IMU_MPU6000: case IMU_MPU6500: case IMU_MPU9250: case IMU_MPU6886:
@@ -246,6 +409,7 @@ static bool configure(uint8_t t) {
 
 // Try one device: identify (or accept the forced type), locate the BMI088 accel die, configure.
 static bool tryDev(const Dev& d, const HwConfig& hw) {
+  if (hw.imuType == IMU_BNO085) return false;     // BNO08x has no register map; it is probed separately by tryBno() (I2C only)
   if (!present(d)) return false;
   uint8_t who = 0, t = identify(d, who);
   if (hw.imuType) {
@@ -297,13 +461,19 @@ bool imuInit(const HwConfig& hw) {
     for (uint8_t a : {0x68, 0x69, 0x6A, 0x6B}) {
       if (tryDev({false, a, 0, false}, hw)) { ok = true; break; }
     }
+    // BNO08x last: it has no WHO_AM_I, so it is only probed (with a soft reset) when nothing else matched.
+    if (!ok && (hw.imuType == 0 || hw.imuType == IMU_BNO085)) {
+      for (uint8_t a : {BNO_ADDR0, BNO_ADDR1}) {
+        if (tryBno(a)) { ok = true; break; }
+      }
+    }
     g_imuInfo.scanN = scanN; memcpy(g_imuInfo.scan, scan, sizeof scan);
   }
   if (!ok) { Serial.println("IMU: no supported sensor found - check the Pins tab"); return false; }
 
   Serial.printf("IMU: %s on %s (ID 0x%02X)\n", IMU_NAMES[s_type], g_imuInfo.bus == BUS_SPI ? "SPI" : "I2C", g_imuInfo.whoami);
   if (s_type == IMU_MPU9250 && !s_dev.spi) setupAk8963();
-  g_imuInfo.mag = s_akOk;
+  g_imuInfo.mag = s_akOk || s_type == IMU_BNO085;
   imuGyroCalStart();
   return true;
 }
@@ -352,9 +522,19 @@ static bool readRaw(float acc[3], float gyr[3]) {
   return true;
 }
 
+// Shared tail of every magnetometer path: chip-frame sample (uT) -> min/max for calibration, hard-iron offset, FLU body frame.
+static void magSample(float chip[3], ImuData& d) {
+  if (s_magCalOn) for (int i = 0; i < 3; i++) { if (chip[i] < s_mMin[i]) s_mMin[i] = chip[i]; if (chip[i] > s_mMax[i]) s_mMax[i] = chip[i]; }
+  for (int i = 0; i < 3; i++) chip[i] -= s_magOff[i];
+  toBody(chip, s_lastMag);
+  s_haveMag = true; d.magFresh = true;
+}
+
 bool imuRead(ImuData& d, bool wantMag) {
   float acc[3], gyr[3];
-  if (s_type == IMU_NONE || !readRaw(acc, gyr)) return false;
+  if (s_type == IMU_NONE) return false;
+  if (s_type == IMU_BNO085) { if (!bnoRead(acc, gyr)) return false; }
+  else if (!readRaw(acc, gyr)) return false;
   if (acc[0] == 0 && acc[1] == 0 && acc[2] == 0 && gyr[0] == 0 && gyr[1] == 0 && gyr[2] == 0) return false;  // bus stuck
   toBody(acc, d.accFlu);
   toBody(gyr, d.gyroFlu);
@@ -391,12 +571,19 @@ bool imuRead(ImuData& d, bool wantMag) {
                        (int16_t)((m[4] << 8) | m[3]) * k * s_akAdj[1],
                        (int16_t)((m[6] << 8) | m[5]) * k * s_akAdj[2]};
         float chip[3] = {ak[1], ak[0], -ak[2]};    // AK8963 axes -> MPU axes
-        if (s_magCalOn) for (int i = 0; i < 3; i++) { if (chip[i] < s_mMin[i]) s_mMin[i] = chip[i]; if (chip[i] > s_mMax[i]) s_mMax[i] = chip[i]; }
-        for (int i = 0; i < 3; i++) chip[i] -= s_magOff[i];
-        toBody(chip, s_lastMag);
-        s_haveMag = true; d.magFresh = true;
+        magSample(chip, d);
       }
     }
+  }
+  if (s_type == IMU_BNO085) {
+    // The hub already applies its own hard/soft-iron calibration. Use its samples for fusion only once it
+    // reports medium/high accuracy (>= 2); an uncalibrated field would pull the yaw around. During the
+    // manual min/max calibration (G1/G0) every sample is recorded regardless.
+    if (wantMag && s_bnoMagNew && (s_bnoMagAcc >= 2 || s_magCalOn)) {
+      float chip[3] = {s_bnoMag[0], s_bnoMag[1], s_bnoMag[2]};
+      magSample(chip, d);
+    }
+    s_bnoMagNew = false;
   }
   for (int i = 0; i < 3; i++) d.magFlu[i] = s_lastMag[i];
   return true;

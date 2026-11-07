@@ -170,7 +170,7 @@ void wifiServerInit(const FcConfig& cfg) {
     bool def = r->hasParam("def");
     if (def) hwDefaults(h, (uint8_t)r->getParam("def")->value().toInt());
     else hwLoad(h);                                          // saved map (may differ from the running one until reboot)
-    char b[900]; int k = snprintf(b, sizeof b, "{\"hw\":");
+    char b[1024]; int k = snprintf(b, sizeof b, "{\"hw\":");
     k += hwToJson(h, b + k, sizeof b - k);
     k += snprintf(b + k, sizeof b - k, ",\"det\":{\"imu\":\"%s\",\"type\":%u,\"bus\":%u,\"addr\":%u,\"who\":%u,\"mag\":%d,\"scan\":[",
                   IMU_NAMES[g_imuInfo.type], g_imuInfo.type, g_imuInfo.bus, g_imuInfo.addr, g_imuInfo.whoami, g_imuInfo.mag);

@@ -278,7 +278,7 @@ async function hwLoad(def){try{const j=await(await fetch('/api/hw'+(def!==undefi
 function hwFill(){const h=HW;$('#hwBoard').value=h.board;$('#hwBus').value=h.bus;$('#hwImu').value=h.imu;$('#hwAlign').value=h.align;$('#hwI2c').value=h.i2c;$('#hwSpi').value=h.spi;
  $('#hwLed').value=h.ledt;$('#hwRxp').value=h.rxp||0;$('#hwCho').value=h.cho||0;$('#hwVs').value=h.vscale;$('#hwBi').checked=!!h.buzinv;
  const d=HWDET;if(d){const sc=d.scan.length?d.scan.map(a=>'0x'+a.toString(16).padStart(2,'0')).join(' '):'none';
-  $('#det').innerHTML=d.type?`Detected <b style="color:var(--ok)">${d.imu}</b> on ${['','I2C','SPI'][d.bus]}${d.bus==1?' @ 0x'+d.addr.toString(16):''} (ID 0x${d.who.toString(16).padStart(2,'0')})${d.mag?' + AK8963 magnetometer':''}<br><span style="color:var(--dim);font-size:13px">I2C devices seen at boot: ${sc}</span>`
+  $('#det').innerHTML=d.type?`Detected <b style="color:var(--ok)">${d.imu}</b> on ${['','I2C','SPI'][d.bus]}${d.bus==1?' @ 0x'+d.addr.toString(16):''} (ID 0x${d.who.toString(16).padStart(2,'0')})${d.mag?(d.imu.indexOf('BNO')==0?' + on-chip magnetometer':' + AK8963 magnetometer'):''}<br><span style="color:var(--dim);font-size:13px">I2C devices seen at boot: ${sc}</span>`
   :`<b style="color:var(--red)">No IMU found</b> with the current pins. <span style="color:var(--dim);font-size:13px">I2C devices seen at boot: ${sc}. Check wiring, then set the bus pins below and reboot.</span>`}
  hwDraw()}
 const pinFn=g=>{for(const [k] of FN)if(HW.pins[k]===g)return k;return ''};

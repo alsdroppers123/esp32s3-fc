@@ -10,6 +10,7 @@ enum ImuType : uint8_t {
   IMU_BMI160, IMU_BMI088,
   IMU_LSM6DS3, IMU_LSM6DSL, IMU_LSM6DSO, IMU_LSM6DSR,
   IMU_QMI8658,
+  IMU_BNO085,               // Bosch/CEVA BNO080 / BNO085 / BNO086 sensor hub (I2C only), incl. magnetometer
   IMU_TYPE_COUNT
 };
 extern const char* const IMU_NAMES[IMU_TYPE_COUNT];
@@ -19,7 +20,7 @@ struct ImuInfo {
   uint8_t bus;             // BUS_I2C / BUS_SPI (0 = not found)
   uint8_t addr;            // I2C address (gyro address for BMI088)
   uint8_t whoami;
-  bool    mag;             // AK8963 magnetometer found (MPU-9250 on I2C)
+  bool    mag;             // magnetometer available: AK8963 (MPU-9250 on I2C) or the BNO08x on-chip one
   uint8_t scan[16];        // I2C addresses that answered during detection
   uint8_t scanN;
 };
