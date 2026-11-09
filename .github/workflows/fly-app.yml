@@ -1,0 +1,27 @@
+name: Build fly app (APK)
+
+on:
+  push:
+    paths:
+      - 'fly-app/**'
+      - '.github/workflows/fly-app.yml'
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+      - run: gradle -p fly-app assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fc-fly-debug-apk
+          path: fly-app/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
