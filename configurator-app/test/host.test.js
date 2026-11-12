@@ -40,7 +40,7 @@ function server(handler) {
 
   const closedPort = notFc.address().port; await new Promise((res) => notFc.close(res));
   r = await probe('127.0.0.1:' + closedPort);
-  assert.strictEqual(r.ok, false); assert.match(r.error, /refused/i); console.log('ok   probe: closed port -> refused message');
+  assert.strictEqual(r.ok, false); assert.match(r.error, /refused|reset/i); console.log('ok   probe: closed port -> refused/reset message');   // Windows may report a reset
 
   r = await probe('definitely-not-a-real-host.invalid');
   assert.strictEqual(r.ok, false); assert.ok(r.error.length > 0); console.log('ok   probe: unknown name -> friendly error (' + r.error.slice(0, 40) + '...)');

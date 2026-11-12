@@ -22,6 +22,8 @@ function friendly(err) {
       return 'Name not found. Try the IP address instead (the hotspot default is 192.168.4.1).';
     case 'ECONNREFUSED':
       return 'Connection refused. Something is at that address but it is not the flight controller web server.';
+    case 'ECONNRESET':
+      return 'Connection was reset. Something is at that address but it is not the flight controller web server.';
     case 'EHOSTUNREACH': case 'ENETUNREACH':
       return 'Host unreachable. Join the drone\'s Wi-Fi (or your router) first.';
     default:
@@ -34,7 +36,7 @@ function probe(host, timeoutMs = 3000) {
   return new Promise((resolve) => {
     let url;
     try { url = new URL('http://' + host + '/api/net'); } catch (e) { return resolve({ ok: false, error: 'Invalid address.' }); }
-    const req = http.get(url, { timeout: timeoutMs }, (res) => {
+    const req = http.get(url, { timeout: timeoutMs, agent: false }, (res) => {   // agent:false = fresh socket, never a pooled one
       res.resume();
       if (res.statusCode >= 200 && res.statusCode < 300) resolve({ ok: true });
       else resolve({ ok: false, error: 'The device answered with HTTP ' + res.statusCode + '. Is this the flight controller?' });
