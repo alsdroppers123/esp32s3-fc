@@ -55,6 +55,37 @@ a.fly{background:var(--cyan);color:#0b1117;text-decoration:none;font-weight:700;
 .net:hover{background:var(--panel)}.net.sel{color:var(--amber)}.net .nb{display:flex;gap:2px;align-items:flex-end;height:12px}.net .nb i{width:3px;background:var(--line)}.net .nb i.on{background:currentColor}
 .net .nb{flex:none}.net>span:nth-child(2){flex:1}.net small{color:var(--dim)}
 .det{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:14px}
+
+/* ---- dashboard polish + hero ---- */
+body{background:radial-gradient(1100px 560px at 75% -8%,#1e2d3d 0,transparent 62%),radial-gradient(900px 520px at -8% 108%,#2b2013 0,transparent 58%),var(--bg);background-attachment:fixed;min-height:100vh}
+header{position:sticky;top:0;z-index:5;background:rgba(20,24,30,.74);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+header b{background:linear-gradient(90deg,#fff 20%,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+nav{background:rgba(20,24,30,.5);padding:0 8px}nav button{border-radius:8px 8px 0 0;transition:color .15s,background .15s}nav button:hover{color:var(--fg);background:rgba(255,255,255,.04)}
+main{max-width:1120px}
+.tab.on{animation:fadein .3s ease}@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+canvas{border-radius:12px}button.b{border-radius:8px;transition:border-color .15s,transform .1s}button.b:active{transform:scale(.97)}
+button.b.pri{background:linear-gradient(135deg,#ffc44d,var(--amber))}
+.det,.ncard,.warn{border-radius:12px}
+.hero{position:relative;height:clamp(400px,66vh,660px);border-radius:18px;overflow:hidden;border:1px solid var(--line);background:#10151b;box-shadow:0 12px 44px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.03);transition:box-shadow .35s,border-color .35s}
+.hero.armed{border-color:rgba(255,93,77,.65);box-shadow:0 0 0 1px rgba(255,93,77,.35),0 0 56px rgba(255,93,77,.2),0 12px 44px rgba(0,0,0,.5)}
+.hero canvas{position:absolute;left:0;top:0;width:100%;height:100%;max-width:none;border:0;border-radius:0;background:none}
+.hud{position:absolute;pointer-events:none;background:rgba(14,19,25,.58);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:10px 16px}
+.hud .t{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+.tl{left:14px;top:14px}.tr{right:14px;top:14px}
+.hud .att{margin:0;gap:20px}.hud .att span{font-size:32px;font-weight:300;line-height:1.1;text-shadow:0 0 18px rgba(86,200,240,.45)}
+.hmot{display:grid;grid-template-columns:repeat(2,auto);gap:10px 22px}
+.hmot .g{display:flex;gap:8px;align-items:flex-end}.hmot b{display:block;font-size:11px;color:var(--dim);font-weight:600}.hmot span{font-size:13px}
+.gb{width:12px;height:54px;border-radius:6px;background:rgba(255,255,255,.09);position:relative;overflow:hidden}
+.gb u{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(0deg,#ff7a18,#ffd36b);border-radius:6px;transition:height .12s}
+.badge{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:rgba(14,19,25,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);border-radius:99px;padding:7px 18px;font-size:13px;letter-spacing:1.6px;font-weight:600;pointer-events:none;white-space:nowrap}
+.badge i{width:4px;height:4px;border-radius:50%;background:var(--dim)}.badge #hmode{color:var(--amber)}.badge #hstate{color:var(--ok)}
+.hero.armed .badge #hstate{color:var(--red);animation:pulse 1.2s infinite}@keyframes pulse{50%{opacity:.45}}
+.dock{margin-top:16px}
+.dock ul.pa{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}.dock ul.pa li{padding:5px 12px;border:1px solid var(--line);border-radius:99px;background:rgba(28,34,43,.7);font-size:13px}
+.dock ul.pa li.y{border-color:rgba(111,208,140,.55);background:rgba(111,208,140,.08)}
+.dock p{color:var(--dim);font-size:13px;margin:4px 0 0}
+@media(max-width:720px){.hero{height:clamp(440px,74vh,600px)}.hud{padding:8px 12px}.hud .att{gap:12px}.hud .att span{font-size:22px}
+ .badge{left:auto;right:14px;top:14px;bottom:auto;transform:none;padding:6px 12px;font-size:12px;letter-spacing:1px;gap:7px}.tr{right:50%;top:auto;bottom:14px;transform:translateX(50%)}.hmot{grid-template-columns:repeat(4,auto);gap:10px 14px}.gb{height:44px}}
 </style></head><body>
 <header><b>ESP32-S3 Flight Controller</b>
 <span id="link" class="pill">offline</span><span id="arm" class="pill">DISARMED</span>
@@ -63,18 +94,20 @@ a.fly{background:var(--cyan);color:#0b1117;text-decoration:none;font-weight:700;
 <button data-t="rx">Receiver</button><button data-t="mot">Motors</button><button data-t="pins">Pins &amp; IMU</button><button data-t="net">Wi-Fi &amp; OTA</button></nav>
 <main>
 
-<section id="setup" class="tab on"><div class="row">
-<canvas id="cv" width="920" height="640"></canvas>
-<div>
-<div class="att"><div>Roll<span id="aR">0</span></div><div>Pitch<span id="aP">0</span></div><div>Yaw<span id="aY">0</span></div></div>
+<section id="setup" class="tab on">
+<div class="hero" id="hero"><canvas id="cv"></canvas>
+<div class="hud tl"><div class="t">Attitude</div><div class="att"><div>Roll<span id="aR">0</span></div><div>Pitch<span id="aP">0</span></div><div>Yaw<span id="aY">0</span></div></div></div>
+<div class="hud tr"><div class="t">Motor output</div><div class="hmot" id="hmot"></div></div>
+<div class="badge"><span id="hstate">DISARMED</span><i></i><span id="hmode">-</span></div></div>
+<div class="dock">
 <ul class="pa" id="pre"></ul>
 <div id="dr" style="color:var(--amber);margin-bottom:10px"></div>
 <button class="b" id="zy">Zero yaw view</button>
 <button class="b" id="cal">Calibrate gyro</button>
 <button class="b" id="mc">Start mag cal</button>
 <button class="b danger" id="kill">DISARM NOW</button>
-<p style="color:var(--dim);font-size:13px">Arm: AUX1 high with throttle low, level, switch seen low first.<br>Mode (AUX2): low = Angle, mid = Horizon, high = Acro.</p>
-</div></div></section>
+<p>Arm: AUX1 high with throttle low, level, switch seen low first. Mode (AUX2): low = Angle, mid = Horizon, high = Acro.</p>
+</div></section>
 
 <section id="pid" class="tab"><div id="pidbox"></div>
 <p style="color:var(--dim);margin:0 0 6px">Rate curves (deg/s over stick travel): roll, pitch, yaw</p>
@@ -167,8 +200,11 @@ function drawRates(){if(!loaded)return;const c=$('#rv'),g=c.getContext('2d'),w=c
 function rot(v,r,p,y){const[x,yy,z]=v,cr=Math.cos(r),sr=Math.sin(r),cp=Math.cos(p),sp=Math.sin(p),cy=Math.cos(y),sy=Math.sin(y);
  const y1=yy*cr-z*sr,z1=yy*sr+z*cr,x2=x*cp+z1*sp,z2=-x*sp+z1*cp;return[x2*cy-y1*sy,x2*sy+y1*cy,z2]}      // NED: x fwd, y right, z down
 const Q=(()=>{
- const S=.9,G=1.25,D=6,W=460,H=320,K=70,cv=$('#cv'),g=cv.getContext('2d'),faces=[],props=[],ph=[0,0,0,0];
- let camY=-.6,camE=.5,last=0,dR=0,dP=0,dY=0,drag=null;
+ const S=.9,G=1.25,D=6,cv=$('#cv'),g=cv.getContext('2d'),faces=[],props=[],ph=[0,0,0,0];
+ let W=460,H=320,K=70,DPR=1,camY=-.6,camE=.5,last=0,dR=0,dP=0,dY=0,drag=null;
+ const stars=[];for(let i=0;i<70;i++)stars.push([(i*.61803)%1,(i*i*.3819+.1*i)%1,1+(i*7%5)/4]);
+ function fit(){const r=cv.getBoundingClientRect();if(!r.width||!r.height)return;DPR=Math.min(2,window.devicePixelRatio||1);W=r.width;H=r.height;
+  const pw=Math.round(W*DPR),ph2=Math.round(H*DPR);if(cv.width!==pw||cv.height!==ph2){cv.width=pw;cv.height=ph2}K=Math.min(H*.24,W*.19)}
  const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],
   cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
  /* a solid = matching top / bottom polygons; the side quads are generated; c = solid centre (for outward normals) */
@@ -184,7 +220,7 @@ const Q=(()=>{
  box(.50,0,-.04,.08,.11,.08,[28,34,42]);box(.585,0,-.04,.012,.06,.045,[86,200,240]);                                         // camera + lens
  faces.push({p:[[.95,0,-.2],[.35,.17,-.2],[.35,-.17,-.2]],col:[86,200,240]});                                                  // nose arrow (double sided)
  const cam=w=>{const c=Math.cos(camY),s=Math.sin(camY),x=w[0]*c-w[1]*s,y=w[0]*s+w[1]*c,up=-w[2],ca=Math.cos(camE),sa=Math.sin(camE);return[y,up*ca+x*sa,x*ca-up*sa+D]},   // X right, Y up, Z depth
-  scr=v=>{const s=D/v[2];return[W/2+v[0]*s*K,H/2+14-v[1]*s*K]},
+  scr=v=>{const s=D/v[2];return[W/2+v[0]*s*K,H*.37-v[1]*s*K]},
   mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t],
   LG=[-.4,.75,-.55],LL=Math.hypot(...LG);
  function poly(pts,fill,stroke){g.beginPath();pts.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]));g.closePath();if(fill){g.fillStyle=fill;g.fill()}if(stroke){g.strokeStyle=stroke;g.lineWidth=1;g.stroke()}}
@@ -192,8 +228,9 @@ const Q=(()=>{
   const t=T?T.t:[0,0,0],m=T?T.m:[0,0,0,0],d=Math.PI/180,a=1-Math.exp(-dt*16);
   dR+=(t[0]*d-dR)*a;dP+=(t[1]*d-dP)*a;const ty=(t[2]-yawOff)*d;dY+=(((ty-dY+Math.PI)%6.2832+6.2832)%6.2832-Math.PI)*a;
   const R=dR,P=dP,Y=dY,B=p=>cam(rot(p,R,P,Y)),gv=(x,y)=>scr(cam([x,y,G]));
-  g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,W,H);
-  const bg=g.createRadialGradient(W/2,H*.62,10,W/2,H*.62,W*.62);bg.addColorStop(0,'#26303c');bg.addColorStop(1,'#161b22');g.fillStyle=bg;g.fillRect(0,0,W,H);
+  fit();g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,W,H);
+  const bg=g.createRadialGradient(W/2,H*.66,10,W/2,H*.66,Math.max(W,H)*.66);bg.addColorStop(0,'#27323f');bg.addColorStop(1,'#10151b');g.fillStyle=bg;g.fillRect(0,0,W,H);
+  g.fillStyle='rgba(200,220,255,.32)';stars.forEach(q=>g.fillRect(q[0]*W,q[1]*H*.62,q[2],q[2]));
   /* ground: ring + grid clipped to it, N marker */
   const ring=[];for(let i=0;i<72;i++){const q=i/72*6.2832;ring.push(gv(2.2*Math.cos(q),2.2*Math.sin(q)))}
   g.save();poly(ring);g.clip();g.fillStyle='rgba(86,200,240,.05)';g.fillRect(0,0,W,H);g.strokeStyle='rgba(135,148,163,.2)';g.lineWidth=1;g.beginPath();
@@ -201,11 +238,16 @@ const Q=(()=>{
   poly(ring,null,'rgba(86,200,240,.5)');
   let n1=gv(2.2,0),n2=gv(2.6,0);g.strokeStyle='#ffb224';g.lineWidth=2;g.beginPath();g.moveTo(n1[0],n1[1]);g.lineTo(n2[0],n2[1]);g.stroke();
   g.fillStyle='#ffb224';g.font='bold 12px system-ui,sans-serif';g.textAlign='center';g.fillText('N',gv(2.95,0)[0],gv(2.95,0)[1]+4);
+  /* light thrown on the ground by each running motor */
+  props.forEach(p=>{const mo=Math.min(1,m[p.i]||0);if(mo<.02)return;const w=rot([p.x,p.y,0],R,P,Y),c=gv(w[0],w[1]),rr=K*.9;g.save();g.translate(c[0],c[1]);g.scale(1,.5);
+   const gr=g.createRadialGradient(0,0,0,0,0,rr);gr.addColorStop(0,'rgba(255,160,50,'+.6*mo+')');gr.addColorStop(1,'rgba(255,160,50,0)');g.fillStyle=gr;g.fillRect(-rr,-rr,rr*2,rr*2);g.restore()});
   /* shadow: body parts dropped straight down onto the ground plane */
   const sh=pts=>poly(pts.map(p=>{const w=rot(p,R,P,Y);return gv(w[0],w[1])}),'rgba(0,0,0,.3)');
   sh([[.44,.3,0],[.44,-.3,0],[-.44,-.3,0],[-.44,.3,0]]);
   props.forEach(p=>{const L=Math.hypot(p.x,p.y),px=-p.y/L*.1,py=p.x/L*.1;sh([[px,py,0],[p.x+px,p.y+py,0],[p.x-px,p.y-py,0],[-px,-py,0]]);
    const c=[];for(let i=0;i<12;i++){const q=i/12*6.2832;c.push([p.x+.34*Math.cos(q),p.y+.34*Math.sin(q),0])}sh(c)});
+  {const w=rot([0,0,0],R,P,Y),a1=scr(cam(rot([0,0,.25],R,P,Y))),b1=gv(w[0],w[1]);g.save();g.setLineDash([3,5]);g.strokeStyle='rgba(86,200,240,.55)';g.lineWidth=1;g.beginPath();g.moveTo(a1[0],a1[1]);g.lineTo(b1[0],b1[1]);g.stroke();g.restore();
+   g.fillStyle='rgba(86,200,240,.8)';g.beginPath();g.ellipse(b1[0],b1[1],5,2.5,0,0,6.2832);g.fill()}      // tether to the ground
   /* solids -> view space, back-face culled, lit, painter-sorted */
   const items=[];
   faces.forEach(f=>{const V=f.p.map(B),n=V.length;let cx=0,cy=0,cz=0;V.forEach(v=>{cx+=v[0];cy+=v[1];cz+=v[2]});cx/=n;cy/=n;cz/=n;
@@ -223,7 +265,7 @@ const Q=(()=>{
    items.push({V:bar.map(B),z:cc[2]+(vis?-.55:.55),prop:1,fill:'rgba(222,230,238,'+(1-.8*mo)+')'})});
   items.sort((x,y)=>y.z-x.z).forEach(it=>{const P2=it.V.map(scr);
    if(it.prop)poly(P2,it.fill,it.line);else poly(P2,'rgb('+(it.col[0]*it.I|0)+','+(it.col[1]*it.I|0)+','+(it.col[2]*it.I|0)+')',it.e?'rgba(0,0,0,.45)':null)});
-  g.fillStyle='#8794a3';g.font='11px system-ui,sans-serif';g.textAlign='left';g.fillText(T?'drag to rotate · double-click to reset':'waiting for telemetry...',8,H-8)}
+  g.fillStyle='#8794a3';g.font='11px system-ui,sans-serif';g.textAlign='left';g.fillText(T?(W<560?'':'drag to rotate · double-click to reset'):'waiting for telemetry...',16,H-16)}
  cv.style.touchAction='none';cv.style.cursor='grab';
  cv.onpointerdown=e=>{drag=[e.clientX,e.clientY,camY,camE];cv.setPointerCapture(e.pointerId)};
  cv.onpointermove=e=>{if(drag){camY=drag[2]+(e.clientX-drag[0])*.01;camE=Math.max(.1,Math.min(1.45,drag[3]+(e.clientY-drag[1])*.008))}};
@@ -238,12 +280,14 @@ const PA=['Gyro calibrated','Level','Throttle low','Receiver link','Arm switch s
  DRN=['','Arm switch off','Receiver signal lost','Tilt limit exceeded','IMU read failure','Disarmed from web','Failsafe landing complete'];
 let IMUS=['none'];
 $('#pre').innerHTML=PA.map(p=>'<li>'+p+'</li>').join('');
+$('#hmot').innerHTML=[3,1,2,0].map(i=>`<div class=g><div class=gb><u id=hm${i}></u></div><div><b>M${i+1}</b><span id=hp${i}>0%</span></div></div>`).join('');
 $('#rxbars').innerHTML=CH.map((n,i)=>`<div class=bar><span>${n}</span><i><u id=rx${i}></u></i><span id=rv${i}>-</span></div>`).join('');
 $('#mbars').innerHTML=MN.map((n,i)=>`<div class="bar m"><span>${n}</span><span class=ctl><input type=range id=ms${i} min=0 max=300 step=5 value=0 style="width:100%;accent-color:var(--amber)"></span><span id=mv${i}>0%</span></div>`).join('')
  +'<div style="color:var(--dim);font-size:13px">Actual output</div>'+[0,1,2,3].map(i=>`<div class="bar m"><span>M${i+1}</span><i><u id=mo${i}></u></i><span id=mp${i}></span></div>`).join('');
 function onTel(d){T=d;const s=d.s,armed=s[0];
  $('#arm').textContent=armed?'ARMED':'DISARMED';$('#arm').className='pill '+(armed?'bad':'');
  $('#mode').textContent=['ACRO','ANGLE','HORIZON'][s[1]];$('#mode').className='pill amb';
+ $('#hmode').textContent=['ACRO','ANGLE','HORIZON'][s[1]];$('#hstate').textContent=armed?'ARMED':'DISARMED';$('#hero').classList.toggle('armed',!!armed);
  $('#src').textContent='RC: '+['none','CRSF','UDP','WEB','PPM'][s[2]];
  const b=d.b||[0,0,0,0];if(b[0]){$('#bat').style.display='';$('#bat').textContent=(b[0]/100).toFixed(2)+' V'}
  $('#imup').textContent='IMU: '+(IMUS[b[2]]||'-');$('#imup').className='pill '+(b[2]?'ok':'bad');$('#src').className='pill '+(s[2]?'ok':'bad');
@@ -252,7 +296,7 @@ function onTel(d){T=d;const s=d.s,armed=s[0];
  $$('#pre li').forEach((li,i)=>li.className=(s[4]>>i&1)?'y':'');
  $('#dr').textContent=(!armed&&s[3])?'Last disarm: '+DRN[s[3]]:'';$('#mc').textContent=s[6]?'Finish mag cal':'Start mag cal';
  d.rc.forEach((v,i)=>{$('#rx'+i).style.width=Math.max(0,Math.min(100,(v-1000)/10))+'%';$('#rv'+i).textContent=v||'-'});
- d.m.forEach((v,i)=>{$('#mo'+i).style.width=v*100+'%';$('#mp'+i).textContent=Math.round(v*100)+'%'});
+ d.m.forEach((v,i)=>{$('#mo'+i).style.width=v*100+'%';$('#mp'+i).textContent=Math.round(v*100)+'%';$('#hm'+i).style.height=Math.round(v*100)+'%';$('#hp'+i).textContent=Math.round(v*100)+'%'});
 }
 
 /* ---------- websocket ---------- */
