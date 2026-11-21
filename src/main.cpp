@@ -17,7 +17,7 @@ static inline float stickNorm(uint16_t us) {
 
 static void flightTask(void*) {
   FcConfig cfg; cfgSnapshot(cfg);
-  pidConfigure(cfg); imuSetMagOffset(cfg.magOff); motorsSetCap(cfg.motorCapPct ? cfg.motorCapPct : 100);
+  pidConfigure(cfg); imuSetMagOffset(cfg.magOff); motorsSetRange(cfg.motorMinPct, cfg.motorCapPct ? cfg.motorCapPct : 100);
 
   Telemetry T; memset(&T, 0, sizeof T);
   bool armed = false, armLow = false, sat = false, fs = false;
@@ -50,7 +50,7 @@ static void flightTask(void*) {
     float dt = constrain((t0 - lastUs) * 1e-6f, 0.0005f, 0.003f);
     lastUs = t0;
 
-    if (cfgConsume(cfg)) { pidConfigure(cfg); imuSetMagOffset(cfg.magOff); motorsSetCap(cfg.motorCapPct ? cfg.motorCapPct : 100); }
+    if (cfgConsume(cfg)) { pidConfigure(cfg); imuSetMagOffset(cfg.magOff); motorsSetRange(cfg.motorMinPct, cfg.motorCapPct ? cfg.motorCapPct : 100); }
     if (g_cmdCalGyro) { g_cmdCalGyro = 0; if (!armed) imuGyroCalStart(); }
     if (g_cmdMagCal == 1) { g_cmdMagCal = 0; imuMagCalStart(); }
 

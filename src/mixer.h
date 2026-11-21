@@ -8,4 +8,4 @@ void motorsInit(uint8_t protocol);
 bool mixerRun(float throttle, const float pid[3], bool airmode, float idlePct, float out[4]);
 void motorsWrite(const float v[4]);     // v <= 0 -> motor stopped, otherwise 0..1 of the throttle range
 void motorsStop();
-void motorsSetCap(float pct);           // global output ceiling in percent (20..100) applied to every output incl. motor test
+void motorsSetRange(float minPct, float capPct);   // start point (0..90 %: where the motor begins to turn) and ceiling (20..100 %), applied to every output incl. motor test

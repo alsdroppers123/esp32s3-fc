@@ -56,7 +56,7 @@ static void sendCfg(AsyncWebSocketClient* c) {
 static void handleCmd(AsyncWebSocketClient* c, char* m) {
   switch (m[0]) {
     case 'C': sendCfg(c); break;
-    case 'U': {                                              // U v0 v1 ... v32  (live parameter update)
+    case 'U': {                                              // U v0 v1 ... v33  (live parameter update)
       float a[CFG_N]; int n = 0; char* p = m + 1; char* e;
       while (n < CFG_N) { float v = strtof(p, &e); if (e == p) break; a[n++] = v; p = e; }
       if (n == CFG_N) { cfgFromArray(s_cfg, a); cfgPublish(s_cfg); }

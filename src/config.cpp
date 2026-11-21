@@ -20,7 +20,7 @@ void cfgDefaults(FcConfig& c) {
   for (int i = 0; i < 3; i++) { c.rcRate[i] = 1.0f; c.superRate[i] = 0.70f; c.expo[i] = 0.0f; }
   c.gyroLpfHz = 150; c.dtermLpfHz = 80; c.rcSmoothHz = 50;
   c.angleStrength = 5.0f; c.angleMax = 45; c.iTermLimit = 300; c.idlePct = 5.5f; c.mahonyKp = 1.0f;
-  c.airmode = 0; c.magFusion = 0; c.protocol = PROTO_DUTY; c.motorCapPct = 100;
+  c.airmode = 0; c.magFusion = 0; c.protocol = PROTO_DUTY; c.motorCapPct = 100; c.motorMinPct = 0;
 }
 
 static float cl(float v, float lo, float hi) { if (!(v >= lo)) return lo; return v > hi ? hi : v; }
@@ -36,6 +36,7 @@ int cfgToArray(const FcConfig& c, float* a) {
   a[n++] = c.idlePct; a[n++] = c.airmode; a[n++] = c.mahonyKp;                     // 27..29
   a[n++] = c.magFusion; a[n++] = c.protocol;                                       // 30..31
   a[n++] = c.motorCapPct ? c.motorCapPct : 100;                                    // 32
+  a[n++] = c.motorMinPct;                                                          // 33
   return n;
 }
 
@@ -50,6 +51,7 @@ void cfgFromArray(FcConfig& c, const float* a) {
   c.idlePct = cl(a[n++], 0, 15); c.airmode = a[n++] > 0.5f; c.mahonyKp = cl(a[n++], 0.1f, 5);
   c.magFusion = a[n++] > 0.5f; c.protocol = (uint8_t)cl(a[n++], 0, 3);
   c.motorCapPct = (uint8_t)(cl(a[n++], 20, 100) + 0.5f);
+  c.motorMinPct = (uint8_t)(cl(a[n++], 0, 90) + 0.5f);
 }
 
 void cfgLoad(FcConfig& c) {

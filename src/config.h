@@ -41,7 +41,7 @@ enum { PROTO_DSHOT300 = 0, PROTO_DSHOT150 = 1, PROTO_PWM = 2, PROTO_DUTY = 3 };
 #define DUTY_PWM_BITS  10
 
 // ============================ CONFIG ==============================
-#define CFG_N     33
+#define CFG_N     34
 #define CFG_MAGIC 0xFC510003u
 
 struct FcConfig {
@@ -51,7 +51,8 @@ struct FcConfig {
   float gyroLpfHz, dtermLpfHz, rcSmoothHz;
   float angleStrength, angleMax, iTermLimit, idlePct, mahonyKp;
   float magOff[3];                 // hard-iron offsets (chip frame, uT)
-  uint8_t airmode, magFusion, protocol, motorCapPct;   // motorCapPct: output ceiling 20..100 % (0 in old saves = 100)
+  uint8_t airmode, magFusion, protocol, motorCapPct, motorMinPct;   // motorCapPct: output ceiling 20..100 % (0 = 100)
+  // motorMinPct: output % where the motor actually starts to turn (0..90). Any command > 0 is mapped to min..100 %, so 0 stays off and the lowest step is the start point.
 };
 
 void cfgDefaults(FcConfig& c);

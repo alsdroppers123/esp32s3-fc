@@ -34,7 +34,12 @@ bool mixerRun(float thr, const float pid[3], bool airmode, float idlePct, float 
 // ---------------------------------------------------------------- outputs
 static uint8_t s_proto = PROTO_DSHOT300;
 static float s_cap = 1.0f;                        // global output ceiling 0..1
-void motorsSetCap(float pct) { s_cap = constrain(pct, 20.0f, 100.0f) * 0.01f; }
+static float s_min = 0.0f;                        // command that is mapped to "motor just starts to turn"
+void motorsSetRange(float minPct, float capPct) {
+  s_min = constrain(minPct, 0.0f, 90.0f) * 0.01f;
+  s_cap = constrain(capPct, 20.0f, 100.0f) * 0.01f;
+  if (s_cap < s_min) s_cap = s_min;
+}
 static uint32_t s_pwmMax = 8191;                  // LEDC full-scale count of the active PWM mode
 static rmt_item32_t s_items[4][17];
 static uint16_t T_BIT, T1H, T0H;                  // RMT ticks @ 80 MHz (12.5 ns)
@@ -86,7 +91,8 @@ static void dshotSend(int i, uint16_t value) {
 
 void motorsWrite(const float v[4]) {
   for (int i = 0; i < 4; i++) {
-    float x = v[i] > s_cap ? s_cap : v[i];
+    float x = v[i];
+    if (x > 0) { x = s_min + constrain(x, 0.0f, 1.0f) * (1.0f - s_min); if (x > s_cap) x = s_cap; }   // 0 = off, >0 = start point..100 %, capped
     if (s_proto == PROTO_PWM || s_proto == PROTO_DUTY) {
       uint32_t duty;
       if (s_proto == PROTO_DUTY) {                              // 0..1 straight onto the duty cycle: 0 % = 0 V, 100 % = 3.3 V

@@ -187,7 +187,7 @@ box.append(tbl('PID gains (Betaflight units)',['P','I','D','FF'],AX.map((n,a)=>[
 box.append(tbl('Rates (Betaflight type)',['RC rate','Super rate','Expo'],AX.map((n,a)=>[n,[num(12+a,.1,3,.01),num(15+a,0,.95,.01),num(18+a,0,1,.01)]])));
 box.append(tbl('Filters and leveling',['Value'],[['Gyro low-pass (Hz)',[num(21,20,400,5)]],['D-term low-pass (Hz)',[num(22,20,300,5)]],['RC smoothing (Hz)',[num(23,10,150,5)]],
  ['Angle strength',[num(24,1,12,.1)]],['Max angle (deg)',[num(25,10,60,1)]],['I-term limit',[num(26,50,500,10)]],['Motor idle (%)',[num(27,0,15,.5)]],['Mahony Kp',[num(29,.1,5,.1)]]]));
-box.append(tbl('Options',['Value'],[['Airmode',[chk(28)]],['Use magnetometer in yaw',[chk(30)]],['Motor output (applies after reboot)',[sel(31,['DShot300','DShot150','PWM 400 Hz (ESC 1000-2000 us)','Duty PWM 20 kHz (0-3.3 V, brushed / MOSFET)'])]],['Motor output cap (% of full)',[num(32,20,100,5)]]]));
+box.append(tbl('Options',['Value'],[['Airmode',[chk(28)]],['Use magnetometer in yaw',[chk(30)]],['Motor output (applies after reboot)',[sel(31,['DShot300','DShot150','PWM 400 Hz (ESC 1000-2000 us)','Duty PWM 20 kHz (0-3.3 V, brushed / MOSFET)'])]],['Motor output cap (% of full)',[num(32,20,100,5)]],['Motor start point (% where it begins to spin)',[num(33,0,90,1)]]]));
 
 function rate(s,rr,su,ex){const a=Math.abs(s);if(ex>0)s=s*a*a*a*ex+s*(1-ex);if(rr>2)rr+=14.54*(rr-2);let r=200*rr*s;if(su>0)r/=Math.min(1,Math.max(.01,1-a*su));return Math.max(-1998,Math.min(1998,r))}
 function drawRates(){if(!loaded)return;const c=$('#rv'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);
