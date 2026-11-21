@@ -42,15 +42,18 @@ static uint16_t T_BIT, T1H, T0H;                  // RMT ticks @ 80 MHz (12.5 ns
 void motorsInit(uint8_t proto) {
   s_proto = proto;
   if (proto == PROTO_PWM || proto == PROTO_DUTY) {
-    const uint32_t hz = proto == PROTO_DUTY ? DUTY_PWM_HZ : 400, bits = proto == PROTO_DUTY ? DUTY_PWM_BITS : 13;
-    s_pwmMax = (1u << bits) - 1;
+    uint32_t hz = proto == PROTO_DUTY ? DUTY_PWM_HZ : 400, bits = proto == PROTO_DUTY ? DUTY_PWM_BITS : 13;
     for (int i = 0; i < 4; i++) {
+      const uint8_t pin = g_hw.pin[F_M1 + i];
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-      ledcAttachChannel(g_hw.pin[F_M1 + i], hz, bits, i);
+      bool ok = ledcAttachChannel(pin, hz, bits, i);
 #else
-      ledcSetup(i, hz, bits); ledcAttachPin(g_hw.pin[F_M1 + i], i);
+      bool ok = ledcSetup(i, hz, bits) != 0;              // returns the real frequency, 0 = LEDC could not do it
+      if (ok) ledcAttachPin(pin, i);
 #endif
+      Serial.printf("motor %d: GPIO%u LEDC ch%d %lu Hz %lu bit -> %s\n", i + 1, pin, i, (unsigned long)hz, (unsigned long)bits, ok ? "ok" : "FAILED");
     }
+    s_pwmMax = (1u << bits) - 1;
   } else {
     if (proto == PROTO_DSHOT150) { T_BIT = 533; T1H = 400; T0H = 200; }
     else                         { T_BIT = 267; T1H = 200; T0H = 100; }   // DShot300
