@@ -36,9 +36,9 @@ enum { PA_GYRO = 1, PA_LEVEL = 2, PA_THR = 4, PA_RC = 8, PA_SWITCH = 16, PA_IDLE
 enum { RC_NONE = 0, RC_CRSF = 1, RC_UDP = 2, RC_WEB = 3, RC_PPM = 4 };
 enum { PROTO_DSHOT300 = 0, PROTO_DSHOT150 = 1, PROTO_PWM = 2, PROTO_DUTY = 3 };
 // PROTO_DUTY: plain duty-cycle PWM on the motor pins (0 % = 0 V ... 100 % = 3.3 V average) for brushed motors
-// behind a MOSFET / driver, instead of 1000..2000 us ESC pulses. 20 kHz is above hearing; 11 bits fit LEDC at 20 kHz.
+// behind a MOSFET / driver, instead of 1000..2000 us ESC pulses. 20 kHz is above hearing; 10 bits fit the 40 MHz LEDC clock at 20 kHz.
 #define DUTY_PWM_HZ    20000
-#define DUTY_PWM_BITS  11
+#define DUTY_PWM_BITS  10
 
 // ============================ CONFIG ==============================
 #define CFG_N     33

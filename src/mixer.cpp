@@ -43,6 +43,10 @@ void motorsInit(uint8_t proto) {
   s_proto = proto;
   if (proto == PROTO_PWM || proto == PROTO_DUTY) {
     uint32_t hz = proto == PROTO_DUTY ? DUTY_PWM_HZ : 400, bits = proto == PROTO_DUTY ? DUTY_PWM_BITS : 13;
+#if ESP_ARDUINO_VERSION_MAJOR < 3
+    // LEDC may run from the 40 MHz XTAL: hz * 2^bits must stay below that clock, so step the resolution down until it fits.
+    while (bits > 8 && ledcSetup(0, hz, bits) == 0) bits--;
+#endif
     for (int i = 0; i < 4; i++) {
       const uint8_t pin = g_hw.pin[F_M1 + i];
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
