@@ -33,6 +33,17 @@ static void flightTask(void*) {
     motorsStop(); for (int i = 0; i < 4; i++) motors[i] = 0;
   };
 
+  // Disarmed outputs: the bench motor test (needs no IMU) while it is enabled and refreshed, otherwise everything off.
+  auto benchOutputs = [&]() {
+    if (g_mtEnable && (millis() - g_mtStamp) < MOTOR_TEST_TIMEOUT_MS) {
+      for (int i = 0; i < 4; i++) motors[i] = g_mtVal[i] * 0.001f;
+      motorsWrite(motors);
+    } else {
+      for (int i = 0; i < 4; i++) motors[i] = 0;
+      motorsStop();
+    }
+  };
+
   for (;;) {
     vTaskDelayUntil(&wake, 1);                       // 1 kHz tick
     uint32_t t0 = micros();
@@ -46,8 +57,16 @@ static void flightTask(void*) {
     // ---------------- sensors + attitude ----------------
     ImuData d;
     if (!imuRead(d, cfg.magFusion || imuMagCalActive())) {
-      if (++imuFail >= 5 && armed) disarm(DR_IMU);
-      if (!armed) motorsStop();
+      if (imuFail < 255) imuFail++;
+      if (imuFail >= 5 && armed) disarm(DR_IMU);
+      if (!armed) benchOutputs();                    // motor test keeps working without a (working) IMU; arming does not
+      if (++n >= 10) {                               // keep the dashboard alive: motor bars, receiver, reason
+        uint8_t s2 = RC_NONE; rcGet(rc, &s2);
+        for (int i = 0; i < 4; i++) T.motor[i] = motors[i];
+        for (int i = 0; i < 8; i++) T.rc[i] = rc[i];
+        T.armed = armed; T.rcSrc = s2; T.preArm = 0; T.disarmReason = (armed || imuFail >= 5) ? DR_IMU : dr;
+        telPublish(T); n = 0;
+      }
       continue;
     }
     imuFail = 0;
@@ -112,12 +131,8 @@ static void flightTask(void*) {
     if (armed) {
       sat = mixerRun(thr, pidOut, cfg.airmode, cfg.idlePct, motors);
       motorsWrite(motors);
-    } else if (g_mtEnable && (millis() - g_mtStamp) < MOTOR_TEST_TIMEOUT_MS) {
-      for (int i = 0; i < 4; i++) motors[i] = g_mtVal[i] * 0.001f;
-      motorsWrite(motors);
     } else {
-      for (int i = 0; i < 4; i++) motors[i] = 0;
-      motorsStop();
+      benchOutputs();
     }
 
     // ---------------- telemetry snapshot @ 100 Hz ----------------
@@ -145,11 +160,9 @@ void setup() {
   statusInit();                                      // LED / buzzer / battery (Core 0)
 
   g_imuOk = imuInit(g_hw);
-  if (g_imuOk) {
-    xTaskCreatePinnedToCore(flightTask, "flight", 8192, nullptr, FLIGHT_TASK_PRIO, nullptr, FLIGHT_CORE);
-  } else {
-    Serial.println("IMU init failed - flight task NOT started (motors stay off). Fix pins in the web UI.");
-  }
+  // The flight task always runs: without an IMU it can never arm, but the bench motor test still works.
+  if (!g_imuOk) Serial.println("IMU init failed - arming disabled, motor test still available. Fix the IMU pins in the web UI.");
+  xTaskCreatePinnedToCore(flightTask, "flight", 8192, nullptr, FLIGHT_TASK_PRIO, nullptr, FLIGHT_CORE);
   wifiServerInit(cfg);                               // Core 0: Wi-Fi, HTTP, WebSocket, OTA
   rcInit();                                          // CRSF task + UDP joystick
   vTaskDelete(nullptr);                              // the Arduino loopTask is not needed

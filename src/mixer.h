@@ -1,4 +1,4 @@
-// mixer.h - Quad-X mixer + motor output (DShot via RMT, PWM fallback via LEDC)
+// mixer.h - Quad-X mixer + motor output (DShot via RMT; 1000-2000 us PWM or plain 0-100 % duty PWM via LEDC)
 #pragma once
 #include "config.h"
 

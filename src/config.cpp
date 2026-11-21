@@ -47,7 +47,7 @@ void cfgFromArray(FcConfig& c, const float* a) {
   c.gyroLpfHz = cl(a[n++], 20, 400);  c.dtermLpfHz = cl(a[n++], 20, 300);  c.rcSmoothHz = cl(a[n++], 10, 150);
   c.angleStrength = cl(a[n++], 1, 12); c.angleMax = cl(a[n++], 10, 60); c.iTermLimit = cl(a[n++], 50, 500);
   c.idlePct = cl(a[n++], 0, 15); c.airmode = a[n++] > 0.5f; c.mahonyKp = cl(a[n++], 0.1f, 5);
-  c.magFusion = a[n++] > 0.5f; c.protocol = (uint8_t)cl(a[n++], 0, 2);
+  c.magFusion = a[n++] > 0.5f; c.protocol = (uint8_t)cl(a[n++], 0, 3);
 }
 
 void cfgLoad(FcConfig& c) {

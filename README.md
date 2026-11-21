@@ -11,7 +11,7 @@ One binary runs on any ESP32-S3 board. Pick an env (`zero` is the default) only 
 | `hw.h/.cpp` | board presets, runtime pin map (NVS), validation, status LED (WS2812 or plain), buzzer, battery ADC |
 | `imu.h/.cpp` | multi-IMU driver (I2C or SPI, auto-detect, incl. BNO085 sensor hub), orientation, gyro calibration, Mahony AHRS |
 | `pid.h/.cpp` | PT1/biquad filters, BF rates, PID + FF + anti-windup |
-| `mixer.h/.cpp` | Quad-X mixer (airmode-style desaturation), DShot150/300 (RMT) or 400 Hz PWM (LEDC) |
+| `mixer.h/.cpp` | Quad-X mixer (airmode-style desaturation), DShot150/300 (RMT), 400 Hz ESC PWM (1000-2000 us) or 20 kHz duty PWM (0-3.3 V, for brushed motors) via LEDC |
 | `rc.h/.cpp` | CRSF parser (UART1 420 kbaud), web joystick, UDP joystick. Priority CRSF > web > UDP |
 | `wifi_server.h/.cpp` | AP+STA, async HTTP, WebSocket (40 Hz telemetry), OTA, mDNS |
 | `web_ui.h` | configurator at `/` (setup, PID, receiver, motors, **Pins & IMU**, Wi-Fi/OTA) |

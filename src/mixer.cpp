@@ -33,17 +33,20 @@ bool mixerRun(float thr, const float pid[3], bool airmode, float idlePct, float 
 
 // ---------------------------------------------------------------- outputs
 static uint8_t s_proto = PROTO_DSHOT300;
+static uint32_t s_pwmMax = 8191;                  // LEDC full-scale count of the active PWM mode
 static rmt_item32_t s_items[4][17];
 static uint16_t T_BIT, T1H, T0H;                  // RMT ticks @ 80 MHz (12.5 ns)
 
 void motorsInit(uint8_t proto) {
   s_proto = proto;
-  if (proto == PROTO_PWM) {
+  if (proto == PROTO_PWM || proto == PROTO_DUTY) {
+    const uint32_t hz = proto == PROTO_DUTY ? DUTY_PWM_HZ : 400, bits = proto == PROTO_DUTY ? DUTY_PWM_BITS : 13;
+    s_pwmMax = (1u << bits) - 1;
     for (int i = 0; i < 4; i++) {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-      ledcAttachChannel(g_hw.pin[F_M1 + i], 400, 13, i);
+      ledcAttachChannel(g_hw.pin[F_M1 + i], hz, bits, i);
 #else
-      ledcSetup(i, 400, 13); ledcAttachPin(g_hw.pin[F_M1 + i], i);
+      ledcSetup(i, hz, bits); ledcAttachPin(g_hw.pin[F_M1 + i], i);
 #endif
     }
   } else {
@@ -75,9 +78,14 @@ static void dshotSend(int i, uint16_t value) {
 void motorsWrite(const float v[4]) {
   for (int i = 0; i < 4; i++) {
     float x = v[i];
-    if (s_proto == PROTO_PWM) {
-      float us = (x <= 0) ? 1000.0f : 1000.0f + constrain(x, 0.0f, 1.0f) * 1000.0f;
-      uint32_t duty = (uint32_t)(us * 3.2768f);                 // 400 Hz, 13 bit: 8192 / 2500 us
+    if (s_proto == PROTO_PWM || s_proto == PROTO_DUTY) {
+      uint32_t duty;
+      if (s_proto == PROTO_DUTY) {                              // 0..1 straight onto the duty cycle: 0 % = 0 V, 100 % = 3.3 V
+        duty = (x <= 0) ? 0 : (uint32_t)(constrain(x, 0.0f, 1.0f) * (float)s_pwmMax + 0.5f);
+      } else {
+        float us = (x <= 0) ? 1000.0f : 1000.0f + constrain(x, 0.0f, 1.0f) * 1000.0f;
+        duty = (uint32_t)(us * 3.2768f);                        // 400 Hz, 13 bit: 8192 / 2500 us
+      }
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
       ledcWrite(g_hw.pin[F_M1 + i], duty);
 #else
