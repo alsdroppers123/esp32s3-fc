@@ -15,7 +15,7 @@
 #define PREARM_LEVEL_DEG   15.0f
 #define ARM_THR_MAX        0.05f
 #define LEVEL_RATE_LIMIT   400.0f    // deg/s cap of the angle-mode outer loop
-#define MOTOR_TEST_MAX_PERMILLE 300  // motor-test slider limit (30 %)
+#define MOTOR_TEST_MAX_PERMILLE 1000 // motor-test slider limit (100 %); the global motor cap below still applies
 #define MOTOR_TEST_TIMEOUT_MS   1000 // motor test stops if not refreshed
 
 #define FLIGHT_CORE        1
@@ -41,7 +41,7 @@ enum { PROTO_DSHOT300 = 0, PROTO_DSHOT150 = 1, PROTO_PWM = 2, PROTO_DUTY = 3 };
 #define DUTY_PWM_BITS  11
 
 // ============================ CONFIG ==============================
-#define CFG_N     32
+#define CFG_N     33
 #define CFG_MAGIC 0xFC510003u
 
 struct FcConfig {
@@ -51,7 +51,7 @@ struct FcConfig {
   float gyroLpfHz, dtermLpfHz, rcSmoothHz;
   float angleStrength, angleMax, iTermLimit, idlePct, mahonyKp;
   float magOff[3];                 // hard-iron offsets (chip frame, uT)
-  uint8_t airmode, magFusion, protocol, _pad;
+  uint8_t airmode, magFusion, protocol, motorCapPct;   // motorCapPct: output ceiling 20..100 % (0 in old saves = 100)
 };
 
 void cfgDefaults(FcConfig& c);

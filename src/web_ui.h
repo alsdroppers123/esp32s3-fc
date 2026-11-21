@@ -118,7 +118,7 @@ button.b.pri{background:linear-gradient(135deg,#ffc44d,var(--amber))}
 <section id="rx" class="tab"><p style="color:var(--dim);font-size:13px;margin:0 0 10px">Receiver protocol (CRSF or PPM) and channel order are set in the Pins &amp; IMU tab. Move each stick and check the right bar moves the right way.</p><div id="rxbars"></div></section>
 
 <section id="mot" class="tab">
-<div class="warn"><b>Remove all propellers.</b> Motor test spins the motors directly. Limited to 30 % and stops 1 s after the last command, on disconnect, or when armed.</div>
+<div class="warn"><b>Remove all propellers.</b> Motor test spins the motors directly. Limited by the Motor output cap (Options) and stops 1 s after the last command, on disconnect, or when armed.</div>
 <label><input type="checkbox" id="mten"> Enable motor test</label>
 <div id="mbars" style="margin:12px 0"></div>
 <button class="b danger" id="mstop">Stop all</button></section>
@@ -187,7 +187,7 @@ box.append(tbl('PID gains (Betaflight units)',['P','I','D','FF'],AX.map((n,a)=>[
 box.append(tbl('Rates (Betaflight type)',['RC rate','Super rate','Expo'],AX.map((n,a)=>[n,[num(12+a,.1,3,.01),num(15+a,0,.95,.01),num(18+a,0,1,.01)]])));
 box.append(tbl('Filters and leveling',['Value'],[['Gyro low-pass (Hz)',[num(21,20,400,5)]],['D-term low-pass (Hz)',[num(22,20,300,5)]],['RC smoothing (Hz)',[num(23,10,150,5)]],
  ['Angle strength',[num(24,1,12,.1)]],['Max angle (deg)',[num(25,10,60,1)]],['I-term limit',[num(26,50,500,10)]],['Motor idle (%)',[num(27,0,15,.5)]],['Mahony Kp',[num(29,.1,5,.1)]]]));
-box.append(tbl('Options',['Value'],[['Airmode',[chk(28)]],['Use magnetometer in yaw',[chk(30)]],['Motor output (applies after reboot)',[sel(31,['DShot300','DShot150','PWM 400 Hz (ESC 1000-2000 us)','Duty PWM 20 kHz (0-3.3 V, brushed / MOSFET)'])]]]));
+box.append(tbl('Options',['Value'],[['Airmode',[chk(28)]],['Use magnetometer in yaw',[chk(30)]],['Motor output (applies after reboot)',[sel(31,['DShot300','DShot150','PWM 400 Hz (ESC 1000-2000 us)','Duty PWM 20 kHz (0-3.3 V, brushed / MOSFET)'])]],['Motor output cap (% of full)',[num(32,20,100,5)]]]));
 
 function rate(s,rr,su,ex){const a=Math.abs(s);if(ex>0)s=s*a*a*a*ex+s*(1-ex);if(rr>2)rr+=14.54*(rr-2);let r=200*rr*s;if(su>0)r/=Math.min(1,Math.max(.01,1-a*su));return Math.max(-1998,Math.min(1998,r))}
 function drawRates(){if(!loaded)return;const c=$('#rv'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);
@@ -282,7 +282,7 @@ let IMUS=['none'];
 $('#pre').innerHTML=PA.map(p=>'<li>'+p+'</li>').join('');
 $('#hmot').innerHTML=[3,1,2,0].map(i=>`<div class=g><div class=gb><u id=hm${i}></u></div><div><b>M${i+1}</b><span id=hp${i}>0%</span></div></div>`).join('');
 $('#rxbars').innerHTML=CH.map((n,i)=>`<div class=bar><span>${n}</span><i><u id=rx${i}></u></i><span id=rv${i}>-</span></div>`).join('');
-$('#mbars').innerHTML=MN.map((n,i)=>`<div class="bar m"><span>${n}</span><span class=ctl><input type=range id=ms${i} min=0 max=300 step=5 value=0 style="width:100%;accent-color:var(--amber)"></span><span id=mv${i}>0%</span></div>`).join('')
+$('#mbars').innerHTML=MN.map((n,i)=>`<div class="bar m"><span>${n}</span><span class=ctl><input type=range id=ms${i} min=0 max=1000 step=5 value=0 style="width:100%;accent-color:var(--amber)"></span><span id=mv${i}>0%</span></div>`).join('')
  +'<div style="color:var(--dim);font-size:13px">Actual output</div>'+[0,1,2,3].map(i=>`<div class="bar m"><span>M${i+1}</span><i><u id=mo${i}></u></i><span id=mp${i}></span></div>`).join('');
 function onTel(d){T=d;const s=d.s,armed=s[0];
  $('#arm').textContent=armed?'ARMED':'DISARMED';$('#arm').className='pill '+(armed?'bad':'');
