@@ -192,7 +192,7 @@ static void statusTask(void*) {
     const uint32_t ph = now % 1000;
     if (!g_imuOk)                 ledSet((now % 200) < 100 ? 60 : 0, 0, 0);        // IMU missing: fast red
     else if (t.armed)             ledSet(lowBat && ph < 500 ? 60 : 50, lowBat && ph < 500 ? 30 : 0, 0);
-    else if (!t.gyroCal)          ledSet(0, 0, (now % 250) < 125 ? 60 : 0);       // calibrating: blue blink
+    else if (t.gyroCal < 100)          ledSet(0, 0, (now % 250) < 125 ? 60 : 0);       // calibrating: blue blink
     else if (t.preArm == PA_ALL || (t.preArm | PA_SWITCH | PA_THR | PA_RC) == PA_ALL) {
       float br = 0.5f - 0.5f * cosf(ph * 0.006283f);                              // ready: green breathing
       ledSet(0, (uint8_t)(4 + br * 40), (uint8_t)(br * 10));
