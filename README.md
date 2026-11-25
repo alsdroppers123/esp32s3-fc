@@ -9,7 +9,7 @@ One binary runs on any ESP32-S3 board. Pick an env (`zero` is the default) only 
 |---|---|
 | `config.h/.cpp` | limits, `FcConfig`, NVS load/save, cross-core shared state |
 | `hw.h/.cpp` | board presets, runtime pin map (NVS), validation, status LED (WS2812 or plain), buzzer, battery ADC |
-| `imu.h/.cpp` | multi-IMU driver (I2C or SPI, auto-detect, incl. BNO085 sensor hub), orientation, gyro calibration, Mahony AHRS |
+| `imu.h/.cpp` | multi-IMU driver (I2C or SPI, auto-detect, incl. BNO085 sensor hub), orientation (auto-detect wizard), gyro + level calibration, Mahony AHRS |
 | `pid.h/.cpp` | PT1/biquad filters, BF rates, PID + FF + anti-windup |
 | `mixer.h/.cpp` | Quad-X mixer (airmode-style desaturation), DShot150/300 (RMT), 400 Hz ESC PWM (1000-2000 us) or 20 kHz duty PWM (0-3.3 V, for brushed motors) via LEDC |
 | `rc.h/.cpp` | CRSF parser (UART1 420 kbaud), web joystick, UDP joystick. Priority CRSF > web > UDP |
@@ -30,6 +30,8 @@ One binary runs on any ESP32-S3 board. Pick an env (`zero` is the default) only 
 - Mounting: set **Sensor orientation** in the Pins & IMU tab (0/90/180/270 deg clockwise, optionally flipped). Default = chip X to the nose, chip Z up.
 
 ## Safety logic (flight task)
+**Calibrate gyro + level** (Setup tab or `/fly`): with the drone resting still on a flat surface it takes ~1 s (any bump restarts it), removes the gyro bias and stores the resting gravity direction as the level reference, so roll, pitch (and the 3D view) read 0 in that pose even if the board is mounted slightly tilted. The reference is saved to flash (per mounting option) and the boot-time calibration keeps it. **Auto-detect orientation**: capture level, then raise the nose ~30 deg; the best of the 8 mounting options is applied and saved. **Quick-start tune** (PID tab): wheelbase, weight and motor type give a conservative starting P/I/D/filter set.
+
 Arm requires: gyro calibrated, |roll|,|pitch| < 15 deg, throttle < 5 %, valid RC, arm switch seen low since boot/last disarm, no motor test/OTA/save active.
 Failsafe: RC silent > 500 ms -> **failsafe landing** (Angle mode, sticks centred, 85 % of the last throttle for `FS_LAND_MS` = 4 s, then disarm; control returns if the link comes back). Set `FS_LAND_MS 0` to drop instead.
 Disarm on: arm switch low, failsafe landing finished, |roll| or |pitch| > 70 deg, IMU read failing 5x, or web DISARM. Saving, OTA and reboot are refused while armed.

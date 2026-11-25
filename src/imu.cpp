@@ -8,6 +8,7 @@
 #include "imu.h"
 #include <Wire.h>
 #include <SPI.h>
+#include <Preferences.h>
 
 const char* const IMU_NAMES[IMU_TYPE_COUNT] = {
   "none", "MPU-6050", "MPU-6000", "MPU-6500", "MPU-9250", "MPU-6886",
@@ -72,13 +73,16 @@ static void setFormat(uint8_t reg, uint8_t len, uint8_t aOff, uint8_t gOff, bool
   s_reg = reg; s_len = len; s_aOff = aOff; s_gOff = gOff; s_be = be; s_aScale = 1.0f / aLsb; s_gScale = 1.0f / gLsb;
 }
 
-static void buildRotation(uint8_t align) {
+static void rotFor(uint8_t align, int8_t R[3][3]) {
   // body = Rz(-theta) * F * chip, theta = clockwise mounting angle seen from above, F = flip about the roll axis.
   static const int8_t C[4] = {1, 0, -1, 0}, S[4] = {0, 1, 0, -1};
   const int q = align & 3; const int8_t c = C[q], s = S[q], f = (align & 4) ? -1 : 1;
-  const int8_t R[3][3] = {{c, (int8_t)(s * f), 0}, {(int8_t)(-s), (int8_t)(c * f), 0}, {0, 0, f}};
-  memcpy(s_rot, R, sizeof R);
+  const int8_t T[3][3] = {{c, (int8_t)(s * f), 0}, {(int8_t)(-s), (int8_t)(c * f), 0}, {0, 0, f}};
+  memcpy(R, T, sizeof T);
 }
+static uint8_t s_align = 0;
+static void buildRotation(uint8_t align) { s_align = align & 7; rotFor(s_align, s_rot); }
+static void levelLoad();
 static inline void toBody(const float c[3], float b[3]) {
   for (int i = 0; i < 3; i++) b[i] = s_rot[i][0] * c[0] + s_rot[i][1] * c[1] + s_rot[i][2] * c[2];
 }
@@ -436,6 +440,7 @@ static bool tryDev(const Dev& d, const HwConfig& hw) {
 bool imuInit(const HwConfig& hw) {
   memset(&g_imuInfo, 0, sizeof g_imuInfo);
   buildRotation(hw.align);
+  levelLoad();                                     // saved level reference (only valid for the same mounting option)
   s_spiHz = (uint32_t)hw.spiMhz * 1000000u;
   const uint8_t* p = hw.pin;
   const bool haveSpi = p[F_SCK] != PIN_NONE && p[F_MISO] != PIN_NONE && p[F_MOSI] != PIN_NONE && p[F_CS] != PIN_NONE;
@@ -474,22 +479,134 @@ bool imuInit(const HwConfig& hw) {
   Serial.printf("IMU: %s on %s (ID 0x%02X)\n", IMU_NAMES[s_type], g_imuInfo.bus == BUS_SPI ? "SPI" : "I2C", g_imuInfo.whoami);
   if (s_type == IMU_MPU9250 && !s_dev.spi) setupAk8963();
   g_imuInfo.mag = s_akOk || s_type == IMU_BNO085;
-  imuGyroCalStart();
+  imuGyroCalStart(false);                          // boot: gyro bias only, keep the saved level
   return true;
 }
 
-// ================================================================= gyro calibration
-#define CAL_N 1500
+// ================================================================= gyro + level calibration
+// Calibration collects CAL_WINS windows of CAL_WIN samples (1 s total). Every window must be still (gyro and accel
+// noise low) and agree with the first one; any motion restarts it, so a bump is caught after 0.25 s instead of after
+// the whole run. The board's resting gravity vector gives the level reference: a rotation that makes it (0,0,1),
+// applied to accel, gyro and mag, so roll/pitch read 0 in the calibration pose whatever the mounting tilt.
+#define CAL_WIN   250
+#define CAL_WINS  4
+#define LEVEL_MAX_TILT_DEG 30.0f
 static float  s_gyroOff[3];
-static bool   s_gyroCal = false;
-static int    s_calN = 0;
-static double s_calSum[3], s_calSq[3];
+static bool   s_gyroCal = false, s_calLevel = false, s_lvlRejected = false;
+static int    s_calN = 0, s_calWin = 0;
+static double s_wG[3], s_wGq[3], s_wA[3], s_wAq[3];          // current window sums
+static double s_tG[3], s_tA[3];                              // accepted windows
+static float  s_refG[3], s_refA[3];                          // first accepted window means
+static float  s_lvl[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+static bool   s_lvlSet = false;
+static float  s_chipAcc[3] = {0, 0, 1}, s_accDev = 1.0f;     // smoothed chip-frame accel + its noise, for orientation capture
+static void seedAttitude(const float a[3]);
 
-void imuGyroCalStart() {
-  s_gyroCal = false; s_calN = 0;
-  for (int i = 0; i < 3; i++) { s_calSum[i] = s_calSq[i] = 0; }
+static inline void applyLevel(float v[3]) {
+  if (!s_lvlSet) return;
+  const float x = v[0], y = v[1], z = v[2];
+  for (int i = 0; i < 3; i++) v[i] = s_lvl[i][0] * x + s_lvl[i][1] * y + s_lvl[i][2] * z;
+}
+
+static void levelSave() {
+  Preferences p;
+  if (!p.begin("imul", false)) return;
+  if (s_lvlSet) { p.putBytes("lvl", s_lvl, sizeof s_lvl); p.putUChar("al", s_align); } else { p.remove("lvl"); p.remove("al"); }
+  p.end();
+}
+static void levelLoad() {
+  s_lvlSet = false;
+  Preferences p;
+  if (!p.begin("imul", true)) return;
+  if (p.getBytesLength("lvl") == sizeof s_lvl && p.getUChar("al", 255) == s_align) { p.getBytes("lvl", s_lvl, sizeof s_lvl); s_lvlSet = true; }
+  p.end();
+}
+// Rotation taking the measured gravity direction g (body frame) onto +Z. Returns false if the board is too far from flat.
+static bool levelFrom(const float g[3]) {
+  float n = sqrtf(g[0] * g[0] + g[1] * g[1] + g[2] * g[2]);
+  if (n < 0.7f || n > 1.3f) return false;
+  const float x = g[0] / n, y = g[1] / n, c = g[2] / n;
+  if (c < cosf(LEVEL_MAX_TILT_DEG * 0.01745329f)) return false;
+  const float sn = sqrtf(x * x + y * y);
+  if (sn < 1e-4f) { memset(s_lvl, 0, sizeof s_lvl); s_lvl[0][0] = s_lvl[1][1] = s_lvl[2][2] = 1; }
+  else {
+    const float kx = y / sn, ky = -x / sn, k[3] = {kx, ky, 0};                      // axis = g x z, normalised
+    const float K[3][3] = {{0, 0, ky}, {0, 0, -kx}, {-ky, kx, 0}};                 // cross-product matrix of k
+    for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++)
+      s_lvl[i][j] = (i == j ? c : 0) + (1 - c) * k[i] * k[j] + sn * K[i][j];       // Rodrigues
+  }
+  s_lvlSet = true;
+  return true;
+}
+
+void imuGyroCalStart(bool level) {
+  s_gyroCal = false; s_calN = 0; s_calWin = 0; s_calLevel = level; s_lvlRejected = false;
+  for (int i = 0; i < 3; i++) { s_wG[i] = s_wGq[i] = s_wA[i] = s_wAq[i] = 0; s_tG[i] = s_tA[i] = 0; }
 }
 bool imuGyroCalibrated() { return s_gyroCal; }
+uint8_t imuCalStatus() {
+  if (s_gyroCal) return s_lvlRejected ? 101 : 100;
+  return (uint8_t)((s_calWin * CAL_WIN + s_calN) * 99 / (CAL_WIN * CAL_WINS));
+}
+void imuLevelClear() { s_lvlSet = false; levelSave(); }
+void imuSetAlign(uint8_t a) { buildRotation(a); imuLevelClear(); }
+
+// One sample (body frame, before bias / level) into the calibration state machine.
+static void calFeed(const float g[3], const float a[3]) {
+  for (int i = 0; i < 3; i++) { s_wG[i] += g[i]; s_wGq[i] += (double)g[i] * g[i]; s_wA[i] += a[i]; s_wAq[i] += (double)a[i] * a[i]; }
+  if (++s_calN < CAL_WIN) return;
+  float mg[3], ma[3]; bool still = true;
+  for (int i = 0; i < 3; i++) {
+    mg[i] = (float)(s_wG[i] / CAL_WIN); ma[i] = (float)(s_wA[i] / CAL_WIN);
+    double vg = s_wGq[i] / CAL_WIN - (double)mg[i] * mg[i], va = s_wAq[i] / CAL_WIN - (double)ma[i] * ma[i];
+    if (sqrt(vg > 0 ? vg : 0) > 1.5 || fabsf(mg[i]) > 30.0f || sqrt(va > 0 ? va : 0) > 0.03) still = false;
+    if (s_calWin > 0 && (fabsf(mg[i] - s_refG[i]) > 2.0f || fabsf(ma[i] - s_refA[i]) > 0.05f)) still = false;
+  }
+  s_calN = 0;
+  for (int i = 0; i < 3; i++) { s_wG[i] = s_wGq[i] = s_wA[i] = s_wAq[i] = 0; }
+  if (!still) { s_calWin = 0; for (int i = 0; i < 3; i++) s_tG[i] = s_tA[i] = 0; return; }       // moved -> start over
+  if (s_calWin == 0) for (int i = 0; i < 3; i++) { s_refG[i] = mg[i]; s_refA[i] = ma[i]; }
+  for (int i = 0; i < 3; i++) { s_tG[i] += mg[i]; s_tA[i] += ma[i]; }
+  if (++s_calWin < CAL_WINS) return;
+
+  float acc[3];
+  for (int i = 0; i < 3; i++) { s_gyroOff[i] = (float)(s_tG[i] / CAL_WINS); acc[i] = (float)(s_tA[i] / CAL_WINS); }
+  if (s_calLevel) {
+    if (levelFrom(acc)) levelSave(); else s_lvlRejected = true;                                   // board not flat enough: keep old level
+  }
+  applyLevel(acc);
+  seedAttitude(acc);                                                                              // snap to level, yaw 0
+  s_gyroCal = true;
+}
+
+// ---- orientation auto-detect: two still captures (level, then nose raised) pick the best of the 8 mounting options ----
+static float s_oriG1[3]; static bool s_oriHave = false;
+static bool oriStill() {
+  float n = sqrtf(s_chipAcc[0] * s_chipAcc[0] + s_chipAcc[1] * s_chipAcc[1] + s_chipAcc[2] * s_chipAcc[2]);
+  return n > 0.85f && n < 1.15f && s_accDev < 0.02f;
+}
+bool imuOrientCapture1() {
+  if (!oriStill()) return false;
+  memcpy(s_oriG1, s_chipAcc, sizeof s_oriG1); s_oriHave = true; return true;
+}
+// Returns the mounting option 0..7, or -1 = not steady / not enough tilt, -2 = no unambiguous match.
+int imuOrientCapture2() {
+  if (!s_oriHave || !oriStill()) return -1;
+  float d[3]; for (int i = 0; i < 3; i++) d[i] = s_chipAcc[i] - s_oriG1[i];
+  const float dn = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+  if (dn < 0.25f) return -1;
+  const float g1n = sqrtf(s_oriG1[0] * s_oriG1[0] + s_oriG1[1] * s_oriG1[1] + s_oriG1[2] * s_oriG1[2]);
+  float best = -9, second = -9; int bi = -1;
+  for (int a = 0; a < 8; a++) {
+    int8_t R[3][3]; rotFor(a, R);
+    float up = 0, fx = 0;                                       // level gravity must map to +Z, the tilt change to +X (nose up)
+    for (int j = 0; j < 3; j++) { up += R[2][j] * s_oriG1[j]; fx += R[0][j] * d[j]; }
+    const float sc = up / g1n + fx / dn;
+    if (sc > best) { second = best; best = sc; bi = a; } else if (sc > second) second = sc;
+  }
+  s_oriHave = false;
+  return (best > 1.6f && best - second > 0.3f) ? bi : -2;
+}
 
 void imuMagCalStart() {
   for (int i = 0; i < 3; i++) { s_mMin[i] = 1e9f; s_mMax[i] = -1e9f; }
@@ -527,6 +644,7 @@ static void magSample(float chip[3], ImuData& d) {
   if (s_magCalOn) for (int i = 0; i < 3; i++) { if (chip[i] < s_mMin[i]) s_mMin[i] = chip[i]; if (chip[i] > s_mMax[i]) s_mMax[i] = chip[i]; }
   for (int i = 0; i < 3; i++) chip[i] -= s_magOff[i];
   toBody(chip, s_lastMag);
+  applyLevel(s_lastMag);
   s_haveMag = true; d.magFresh = true;
 }
 
@@ -536,24 +654,18 @@ bool imuRead(ImuData& d, bool wantMag) {
   if (s_type == IMU_BNO085) { if (!bnoRead(acc, gyr)) return false; }
   else if (!readRaw(acc, gyr)) return false;
   if (acc[0] == 0 && acc[1] == 0 && acc[2] == 0 && gyr[0] == 0 && gyr[1] == 0 && gyr[2] == 0) return false;  // bus stuck
+  for (int i = 0; i < 3; i++) s_chipAcc[i] += 0.02f * (acc[i] - s_chipAcc[i]);              // for orientation auto-detect
+  { float dv = fabsf(acc[0] - s_chipAcc[0]) + fabsf(acc[1] - s_chipAcc[1]) + fabsf(acc[2] - s_chipAcc[2]); s_accDev += 0.02f * (dv - s_accDev); }
   toBody(acc, d.accFlu);
   toBody(gyr, d.gyroFlu);
 
-  if (!s_gyroCal) {                                // collect bias while the board is still
-    for (int i = 0; i < 3; i++) { s_calSum[i] += d.gyroFlu[i]; s_calSq[i] += (double)d.gyroFlu[i] * d.gyroFlu[i]; }
-    if (++s_calN >= CAL_N) {
-      bool still = true; float mean[3];
-      for (int i = 0; i < 3; i++) {
-        mean[i] = (float)(s_calSum[i] / CAL_N);
-        double var = s_calSq[i] / CAL_N - (double)mean[i] * mean[i];
-        if (sqrt(var > 0 ? var : 0) > 2.0 || fabsf(mean[i]) > 30.0f) still = false;
-      }
-      if (still) { for (int i = 0; i < 3; i++) s_gyroOff[i] = mean[i]; s_gyroCal = true; }
-      else imuGyroCalStart();                      // moved -> try again
-    }
+  if (!s_gyroCal) {                                // collect bias (and level) while the board is still
+    calFeed(d.gyroFlu, d.accFlu);
+    applyLevel(d.accFlu);
     for (int i = 0; i < 3; i++) d.gyroFlu[i] = 0;
   } else {
     for (int i = 0; i < 3; i++) d.gyroFlu[i] -= s_gyroOff[i];
+    applyLevel(d.accFlu); applyLevel(d.gyroFlu);
   }
   d.rate[0] =  d.gyroFlu[0];                       // roll  : right-side-down positive
   d.rate[1] = -d.gyroFlu[1];                       // pitch : nose-up positive
@@ -593,6 +705,18 @@ bool imuRead(ImuData& d, bool wantMag) {
 static float q0 = 1, q1 = 0, q2 = 0, q3 = 0;
 static float s_roll = 0, s_pitch = 0, s_yaw = 0;
 static uint32_t s_warm = 0;
+
+// Start the filter from the measured gravity (FLU body frame, g) with yaw 0.
+static void seedAttitude(const float a[3]) {
+  const float n = sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+  if (n < 0.5f) return;
+  const float ax = a[0] / n, ay = a[1] / n, az = a[2] / n;
+  const float phi = atan2f(ay, az), th = asinf(-ax > 1 ? 1 : (-ax < -1 ? -1 : -ax));       // roll, FLU pitch (nose-down +)
+  const float cr = cosf(phi * 0.5f), sr = sinf(phi * 0.5f), cp = cosf(th * 0.5f), sp = sinf(th * 0.5f);
+  q0 = cr * cp; q1 = sr * cp; q2 = cr * sp; q3 = -sr * sp;
+  s_roll = phi * 57.29577951f; s_pitch = -th * 57.29577951f; s_yaw = 0;
+  s_warm = 1500;                                                                            // short fast-convergence tail
+}
 
 // Mahony AHRS (x-io formulation, Kp only; gyro bias is removed by calibration).
 void imuUpdateAttitude(const ImuData& d, float dt, float kp, bool useMag) {

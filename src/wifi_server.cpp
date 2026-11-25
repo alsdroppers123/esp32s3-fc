@@ -68,7 +68,18 @@ static void handleCmd(AsyncWebSocketClient* c, char* m) {
       if (!isArmed() && cfgSave(s_cfg)) c->text("{\"ack\":\"Saved to NVS\"}"); else c->text("{\"err\":\"Save failed\"}");
       g_busy = false;
       break;
-    case 'K': if (!isArmed()) { g_cmdCalGyro = 1; c->text("{\"ack\":\"Gyro calibration started - keep still\"}"); } break;
+    case 'K': if (!isArmed()) { g_cmdCalGyro = 1; c->text("{\"ack\":\"Calibrating gyro + level - keep the board still and flat\"}"); } break;
+    case 'O': {                                              // O1 = capture level, O2 = capture nose raised -> detected mounting option
+      if (isArmed()) break;
+      if (m[1] == '1') c->text(imuOrientCapture1() ? "{\"ack\":\"Level captured - now raise the nose about 30 degrees and hold still\"}" : "{\"err\":\"Hold the board still and level, then try again\"}");
+      else if (m[1] == '2') {
+        int r = imuOrientCapture2(); char b[64];
+        if (r >= 0) { imuSetAlign((uint8_t)r); snprintf(b, sizeof b, "{\"ori\":%d}", r); c->text(b); }
+        else c->text(r == -1 ? "{\"err\":\"Not steady, or the nose was not raised enough (need ~30 degrees)\"}" : "{\"err\":\"No clear match - the sensor must be mounted flat (or upside down)\"}");
+      }
+      break;
+    }
+    case 'A': if (!isArmed()) { int a = atoi(m + 1); if (a >= 0 && a < 8) imuSetAlign((uint8_t)a); } break;
     case 'G':                                                // magnetometer hard-iron calibration: G1 start, G0 stop
       if (m[1] == '1') { g_cmdMagCal = 1; c->text("{\"ack\":\"Rotate the board through all orientations, then stop\"}"); }
       else { imuMagCalFinish(s_cfg.magOff); cfgPublish(s_cfg); c->text("{\"ack\":\"Mag offsets updated (not saved yet)\"}"); }

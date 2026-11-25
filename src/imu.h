@@ -39,7 +39,12 @@ bool imuRead(ImuData& d, bool wantMag);
 void imuUpdateAttitude(const ImuData& d, float dt, float kp, bool useMag);
 void imuGetAttitude(float& rollDeg, float& pitchDeg, float& yawDeg);
 bool imuGyroCalibrated();
-void imuGyroCalStart();
+void imuGyroCalStart(bool level = false);   // level=true also re-zeroes roll/pitch (board must rest flat, within 30 deg)
+uint8_t imuCalStatus();                     // 0..99 progress, 100 calibrated, 101 calibrated but level rejected (tilted)
+void imuLevelClear();                       // forget the saved level reference
+void imuSetAlign(uint8_t align);            // change the mounting option live (clears the level reference)
+bool imuOrientCapture1();                   // orientation auto-detect step 1: board resting level
+int  imuOrientCapture2();                   // step 2: nose raised ~30 deg -> best option 0..7, -1 not steady, -2 ambiguous
 void imuMagCalStart();
 bool imuMagCalActive();
 void imuMagCalFinish(float off[3]);

@@ -38,6 +38,7 @@ input[type=text],input[type=password]{width:100%;max-width:280px}
 progress{width:100%;max-width:340px;accent-color:var(--amber)}
 a.fly{background:var(--cyan);color:#0b1117;text-decoration:none;font-weight:700;border-radius:99px;padding:4px 14px;font-size:13px;letter-spacing:.4px}
 .hwgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 16px;margin-bottom:14px}
+.qs{border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px;background:var(--panel)}.qs .t{font-weight:600;margin-bottom:8px}
 .hwgrid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim)}.hwgrid select,.hwgrid input{width:100%}
 .board{display:flex;flex-wrap:wrap;gap:14px;background:linear-gradient(160deg,#16261f,#0f1a15);border:1px solid #284236;border-radius:12px;padding:14px;margin-bottom:14px}
 .hcol{flex:1 1 220px;min-width:200px}.hcol h4{margin:0 0 8px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8fb3a2;font-weight:600}
@@ -103,13 +104,25 @@ button.b.pri{background:linear-gradient(135deg,#ffc44d,var(--amber))}
 <ul class="pa" id="pre"></ul>
 <div id="dr" style="color:var(--amber);margin-bottom:10px"></div>
 <button class="b" id="zy">Zero yaw view</button>
-<button class="b" id="cal">Calibrate gyro</button>
+<button class="b" id="cal">Calibrate gyro + level</button>
+<button class="b" id="ori">Auto-detect orientation</button>
 <button class="b" id="mc">Start mag cal</button>
 <button class="b danger" id="kill">DISARM NOW</button>
+<p id="calhint" style="margin-bottom:6px">Calibrate with the drone resting still on a flat surface: it zeroes the gyro, roll, pitch and the 3D view in that pose (about 1 s; any bump restarts it).</p>
 <p>Arm: AUX1 high with throttle low, level, switch seen low first. Mode (AUX2): low = Angle, mid = Horizon, high = Acro.</p>
 </div></section>
 
-<section id="pid" class="tab"><div id="pidbox"></div>
+<section id="pid" class="tab">
+<div class="qs" id="qs"><div class="t">Quick-start tune</div>
+<div class="hwgrid">
+<label>Motor / build type<select id="qsType"></select></label>
+<label>Wheelbase, motor to motor diagonal (mm)<input type="number" id="qsWb" min="30" max="500" value="65"></label>
+<label>Ready-to-fly weight (g)<input type="number" id="qsW" min="5" max="2000" value="25"></label>
+</div>
+<button class="b pri" id="qsGo">Apply starting values</button>
+<span id="qsOut" style="color:var(--dim);font-size:13px"></span>
+<p style="color:var(--dim);font-size:12px;margin:6px 0 0">Conservative gains for that size and motor type - a safe place to start, not a finished tune. Raise P a little at a time until it just starts to oscillate, then back off; add D to damp it.</p></div>
+<div id="pidbox"></div>
 <p style="color:var(--dim);margin:0 0 6px">Rate curves (deg/s over stick travel): roll, pitch, yaw</p>
 <canvas id="rv" width="460" height="200" style="margin-bottom:12px"></canvas><br>
 <button class="b pri" id="save">Save to NVS</button><button class="b" id="reload">Reload from FC</button>
@@ -164,7 +177,7 @@ button.b.pri{background:linear-gradient(135deg,#ffc44d,var(--amber))}
 
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-let ws,cfg=[],loaded=false,tm=0,yawOff=0,mtOn=false,T=null;const ctl={};
+let ws,cfg=[],loaded=false,tm=0,yawOff=0,mtOn=false,T=null,prevCs=-1,oriStep=0;const ctl={};
 const send=s=>{if(ws&&ws.readyState===1)ws.send(s)};
 function toast(m){const t=$('#toast');t.textContent=m;t.style.opacity=1;clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.opacity=0,2600)}
 function push(){if(!loaded)return;clearTimeout(tm);tm=setTimeout(()=>send('U '+cfg.join(' ')),120);drawRates()}
@@ -195,6 +208,30 @@ function drawRates(){if(!loaded)return;const c=$('#rv'),g=c.getContext('2d'),w=c
  ['#ff5d4d','#6fd08c','#56c8f0'].forEach((col,a)=>{g.strokeStyle=col;g.lineWidth=2;g.beginPath();
   for(let k=0;k<=100;k++){const x=k/100*w,y=h/2-rate(k/50-1,cfg[12+a],cfg[15+a],cfg[18+a])/1998*h/2;k?g.lineTo(x,y):g.moveTo(x,y)}g.stroke()});
  g.fillStyle='#8794a3';g.fillText('2000 deg/s',4,12)}
+
+/* ---------- quick-start presets ---------- */
+// [label, ref wheelbase mm, ref weight g, roll P,I,D,FF, gyro LPF, D LPF, RC smoothing, angle strength, max angle, I limit, idle %, brushed]
+const QS=[['Micro brushed (6-8.5 mm coreless, 1S)',65,25,[24,40,10,28],100,60,40,4,35,250,0,1],
+ ['Brushed, larger (8520 / 100-130 mm)',100,60,[30,50,14,35],110,70,45,4.5,40,280,0,1],
+ ['Brushless whoop (65-75 mm)',75,30,[35,60,22,60],150,80,50,5,45,300,5.5,0],
+ ['Brushless 3 inch',130,120,[38,64,26,60],150,90,50,5,45,300,5.5,0],
+ ['Brushless 5 inch',220,600,[45,75,32,70],130,100,50,5,50,300,5.5,0]];
+$('#qsType').innerHTML=QS.map((q,i)=>`<option value=${i}>${q[0]}</option>`).join('');
+$('#qsType').onchange=()=>{const q=QS[+$('#qsType').value];$('#qsWb').value=q[1];$('#qsW').value=q[2]};
+function qsApply(){if(!loaded){toast('Not connected to the flight controller yet');return}
+ const q=QS[+$('#qsType').value],wb=Math.max(30,+$('#qsWb').value||q[1]),w=Math.max(5,+$('#qsW').value||q[2]);
+ const cl=(v,a,b)=>Math.min(b,Math.max(a,v));
+ const sf=cl(Math.pow(q[1]/wb,.4),.75,1.3),wf=cl(Math.pow(q[2]/w,.3),.75,1.3),f=sf*wf*.85;      // bigger / heavier -> gentler, then 15 % extra margin
+ const R=q[3].map(v=>Math.round(cl(v*f,0,250))),Pt=R.map((v,k)=>Math.round(cl(v*1.05,0,250)));
+ const Y=[Math.round(cl(R[0]*1.15,0,250)),R[1],0,Math.round(cl(R[3]*.9,0,250))];
+ const set={};[R,Pt,Y].forEach((a,ax)=>a.forEach((v,k)=>set[ax*4+k]=v));
+ Object.assign(set,{21:q[4],22:q[5],23:q[6],24:q[7],25:q[8],26:q[9],27:q[10]});
+ if(q[11]&&cfg[31]!==3)set[31]=3;                                                                // brushed -> duty PWM (applies after reboot)
+ for(const i in set){cfg[i]=set[i];if(ctl[i])ctl[i].set(set[i])}
+ push();drawRates();
+ $('#qsOut').textContent='Roll P/I/D/FF '+R.join(' / ')+' - applied live, press Save to keep.'+(set[31]===3?' Motor output set to Duty PWM (reboot after saving).':'');
+ toast('Starting values applied')}
+$('#qsGo').onclick=qsApply;
 
 /* ---------- 3D quad (software-rendered on a 2D canvas, no libraries) ---------- */
 function rot(v,r,p,y){const[x,yy,z]=v,cr=Math.cos(r),sr=Math.sin(r),cp=Math.cos(p),sp=Math.sin(p),cy=Math.cos(y),sy=Math.sin(y);
@@ -292,6 +329,8 @@ function onTel(d){T=d;const s=d.s,armed=s[0];
  const b=d.b||[0,0,0,0];if(b[0]){$('#bat').style.display='';$('#bat').textContent=(b[0]/100).toFixed(2)+' V'}
  $('#imup').textContent='IMU: '+(IMUS[b[2]]||'-');$('#imup').className='pill '+(b[2]?'ok':'bad');$('#src').className='pill '+(s[2]?'ok':'bad');
  $('#loop').textContent='loop '+s[7]+'/'+s[8]+' us';
+ const cs=s[5];$('#cal').textContent=cs<100?'Calibrating '+cs+'%':'Calibrate gyro + level';
+ if(prevCs>=0&&prevCs<100&&cs>=100){yawOff=0;toast(cs===101?'Gyro calibrated, but the board is tilted too far (over 30 deg): roll/pitch not re-zeroed. Set it flat and try again.':'Calibrated: roll, pitch and yaw are now zero')}prevCs=cs;
  $('#aR').textContent=d.t[0].toFixed(1);$('#aP').textContent=d.t[1].toFixed(1);$('#aY').textContent=(((d.t[2]-yawOff)%360+540)%360-180).toFixed(0);
  $$('#pre li').forEach((li,i)=>li.className=(s[4]>>i&1)?'y':'');
  $('#dr').textContent=(!armed&&s[3])?'Last disarm: '+DRN[s[3]]:'';$('#mc').textContent=s[6]?'Finish mag cal':'Start mag cal';
@@ -305,13 +344,18 @@ function conn(){ws=new WebSocket('ws://'+location.host+'/ws');
  ws.onclose=()=>{$('#link').textContent='offline';$('#link').className='pill';mtOn=false;$('#mten').checked=false;setTimeout(conn,1000)};
  ws.onmessage=e=>{const d=JSON.parse(e.data);
   if(d.cfg){cfg=d.cfg;loaded=true;for(const i in ctl)ctl[i].set(cfg[i]);drawRates()}
-  else if(d.t)onTel(d);else if(d.ack)toast(d.ack);else if(d.err)toast('Error: '+d.err)}}
+  else if(d.t)onTel(d);else if(d.ori!==undefined)oriDone(d.ori);else if(d.ack){toast(d.ack);if(/Level captured/.test(d.ack)){oriStep=1;$('#ori').textContent='2) Raised nose - detect'}}else if(d.err)toast('Error: '+d.err)}}
 
 /* ---------- ui wiring ---------- */
 $$('#nav button').forEach(b=>b.onclick=()=>{$$('#nav button').forEach(x=>x.classList.toggle('on',x===b));
  $$('.tab').forEach(s=>s.classList.toggle('on',s.id===b.dataset.t));if(b.dataset.t==='net')netInfo();if(b.dataset.t==='pins')hwLoad();if(b.dataset.t==='pid')drawRates()});
 $('#zy').onclick=()=>{if(T)yawOff=T.t[2]};
 $('#cal').onclick=()=>send('K');
+$('#ori').onclick=()=>{if(T&&T.s[0]){toast('Disarm first');return}
+ if(oriStep===0){toast('Rest the board level and still...');send('O1')}else send('O2')};
+async function oriDone(n){oriStep=0;$('#ori').textContent='Auto-detect orientation';
+ try{await hwLoad();if(HW){HW.align=n;$('#hwAlign').value=n;await hwSave(false)}}catch(e){}
+ toast('Orientation: '+ALN[n]+' - applied and saved. Now press Calibrate gyro + level.')}
 $('#mc').onclick=()=>send(T&&T.s[6]?'G0':'G1');
 $('#kill').onclick=()=>send('D');
 $('#save').onclick=()=>send('V');

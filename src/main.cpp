@@ -51,7 +51,7 @@ static void flightTask(void*) {
     lastUs = t0;
 
     if (cfgConsume(cfg)) { pidConfigure(cfg); imuSetMagOffset(cfg.magOff); motorsSetRange(cfg.motorMinPct, cfg.motorCapPct ? cfg.motorCapPct : 100); }
-    if (g_cmdCalGyro) { g_cmdCalGyro = 0; if (!armed) imuGyroCalStart(); }
+    if (g_cmdCalGyro) { g_cmdCalGyro = 0; if (!armed) imuGyroCalStart(true); }
     if (g_cmdMagCal == 1) { g_cmdMagCal = 0; imuMagCalStart(); }
 
     // ---------------- sensors + attitude ----------------
@@ -143,7 +143,7 @@ static void flightTask(void*) {
       for (int i = 0; i < 4; i++) T.motor[i] = motors[i];
       for (int i = 0; i < 8; i++) T.rc[i] = rc[i];
       T.armed = armed; T.mode = mode; T.rcSrc = src; T.disarmReason = dr; T.preArm = pa;
-      T.gyroCal = imuGyroCalibrated(); T.magCal = imuMagCalActive(); T.failsafe = fs;
+      T.gyroCal = imuCalStatus(); T.magCal = imuMagCalActive(); T.failsafe = fs;
       T.loopAvgUs = workSum / n; T.loopMaxUs = workMax;
       telPublish(T);
       n = 0; workSum = 0; workMax = 0;
