@@ -1,0 +1,34 @@
+name: Firmware (.bin for Wi-Fi update)
+
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'platformio.ini', '.github/workflows/firmware.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [zero, supermini, xiao, devkitc, generic]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio
+      - run: pio run -e ${{ matrix.env }}
+      - name: Collect the OTA image
+        run: |
+          mkdir out
+          cp .pio/build/${{ matrix.env }}/firmware.bin out/esp32s3-fc-${{ matrix.env }}-${{ github.sha }}.bin
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.env }}
+          path: out/*.bin

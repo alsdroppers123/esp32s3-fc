@@ -32,6 +32,8 @@ One binary runs on any ESP32-S3 board. Pick an env (`zero` is the default) only 
 ## Safety logic (flight task)
 **Calibrate gyro + level** (Setup tab or `/fly`): with the drone resting still on a flat surface it takes ~1 s (any bump restarts it), removes the gyro bias and stores the resting gravity direction as the level reference, so roll, pitch (and the 3D view) read 0 in that pose even if the board is mounted slightly tilted. The reference is saved to flash (per mounting option) and the boot-time calibration keeps it. **Auto-detect orientation**: capture level, then raise the nose ~30 deg; the best of the 8 mounting options is applied and saved. **Quick-start tune** (PID tab): wheelbase, weight and motor type give a conservative starting P/I/D/filter set.
 
+**Firmware builds:** every push to `main` that touches `src/` builds `firmware.bin` for each board in GitHub Actions (artifact `firmware-<board>`). Download it, unzip, and upload the `.bin` in the web UI under Wi-Fi & OTA to update over Wi-Fi.
+
 Arm requires: gyro calibrated, |roll|,|pitch| < 15 deg, throttle < 5 %, valid RC, arm switch seen low since boot/last disarm, no motor test/OTA/save active.
 Failsafe: RC silent > 500 ms -> **failsafe landing** (Angle mode, sticks centred, 85 % of the last throttle for `FS_LAND_MS` = 4 s, then disarm; control returns if the link comes back). Set `FS_LAND_MS 0` to drop instead.
 Disarm on: arm switch low, failsafe landing finished, |roll| or |pitch| > 70 deg, IMU read failing 5x, or web DISARM. Saving, OTA and reboot are refused while armed.
