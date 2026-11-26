@@ -163,8 +163,12 @@ static void statusTask(void*) {
 
     // ---- battery (ADC1, 10 Hz, PT1 smoothed)
     if (g_hw.pin[F_VBAT] != PIN_NONE && tick % 5 == 0) {
-      float v = analogReadMilliVolts(g_hw.pin[F_VBAT]) * 0.001f * g_hw.vbatScale;
-      vf = vf < 0.5f ? v : vf + 0.2f * (v - vf);
+      uint32_t sm[16];                                     // 16 samples, drop the 4 highest and 4 lowest, average the rest:
+      for (int i = 0; i < 16; i++) { sm[i] = analogReadMilliVolts(g_hw.pin[F_VBAT]); delayMicroseconds(60); }   // spans several motor-PWM cycles, rejects spikes
+      for (int i = 1; i < 16; i++) { uint32_t k = sm[i]; int j = i - 1; while (j >= 0 && sm[j] > k) { sm[j + 1] = sm[j]; j--; } sm[j + 1] = k; }
+      uint32_t acc = 0; for (int i = 4; i < 12; i++) acc += sm[i];
+      float v = (acc / 8.0f) * 0.001f * g_hw.vbatScale;
+      vf = vf < 0.5f ? v : vf + 0.1f * (v - vf);
       g_vbatCv = vf < 0.5f ? 0 : (uint16_t)(vf * 100.0f);
       if (!cells && vf > 2.5f) cells = (uint8_t)ceilf(vf / 4.35f);
     }
